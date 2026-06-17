@@ -36,6 +36,8 @@ Dry run without posting:
 npm run dry
 ```
 
+Dry runs do not post to Discord or update `data/seen.json`.
+
 Run normally:
 
 ```bash
