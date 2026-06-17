@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { test } from 'node:test';
 
 import {
@@ -8,7 +11,8 @@ import {
   isSoftwareInternship,
   isUsBasedListing,
   listingMatches,
-  normalizeListing
+  normalizeListing,
+  run
 } from '../src/index.js';
 
 const baseListing = {
@@ -81,4 +85,114 @@ test('builds safe Discord webhook embeds without accidental mentions', () => {
   assert.equal(payload.embeds[0].title, 'Example Co - Software Engineering Intern');
   assert.equal(payload.embeds[0].url, 'https://example.com/apply');
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Source' && field.value === 'SimplifyJobs'), true);
+});
+
+async function withTempState(testBody) {
+  const directory = await mkdtemp(join(tmpdir(), 'internship-state-'));
+  const statePath = join(directory, 'seen.json');
+
+  try {
+    await testBody(statePath);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function matchingListing(id, title = 'Software Engineering Intern') {
+  return {
+    ...baseListing,
+    id,
+    title,
+    url: `https://example.com/${id}`
+  };
+}
+
+test('first run seeds matching listings without posting when POST_ON_FIRST_RUN is false', async () => {
+  await withTempState(async (statePath) => {
+    const posted = [];
+
+    await run(
+      {
+        dryRun: false,
+        webhookUrl: 'https://discord.example/webhook',
+        postOnFirstRun: false,
+        maxPostsPerRun: 10,
+        statePath,
+        nonUsTerms: undefined,
+        softwareKeywords: undefined
+      },
+      {
+        fetchListings: async () => [matchingListing('seed-1'), matchingListing('seed-2')],
+        postToDiscord: async (listing) => posted.push(listing),
+        now: () => new Date('2026-06-17T00:00:00.000Z')
+      }
+    );
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(posted, []);
+    assert.deepEqual(state.seen, ['seed-1', 'seed-2']);
+    assert.equal(state.lastRunAt, '2026-06-17T00:00:00.000Z');
+  });
+});
+
+test('posting honors MAX_POSTS_PER_RUN and saves only posted listing keys', async () => {
+  await withTempState(async (statePath) => {
+    await writeFile(statePath, `${JSON.stringify({ seen: ['already-seen'], lastRunAt: null }, null, 2)}\n`);
+    const posted = [];
+
+    await run(
+      {
+        dryRun: false,
+        webhookUrl: 'https://discord.example/webhook',
+        postOnFirstRun: true,
+        maxPostsPerRun: 2,
+        statePath,
+        nonUsTerms: undefined,
+        softwareKeywords: undefined
+      },
+      {
+        fetchListings: async () => [
+          matchingListing('already-seen'),
+          matchingListing('new-1'),
+          matchingListing('new-2'),
+          matchingListing('new-3')
+        ],
+        postToDiscord: async (listing) => posted.push(listing.id),
+        now: () => new Date('2026-06-17T00:00:00.000Z')
+      }
+    );
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(posted, ['new-1', 'new-2']);
+    assert.deepEqual(state.seen, ['already-seen', 'new-1', 'new-2']);
+  });
+});
+
+test('dry run does not post or mutate seen state', async () => {
+  await withTempState(async (statePath) => {
+    const initialState = { seen: [], lastRunAt: null };
+    await writeFile(statePath, `${JSON.stringify(initialState, null, 2)}\n`);
+    const posted = [];
+
+    await run(
+      {
+        dryRun: true,
+        webhookUrl: '',
+        postOnFirstRun: true,
+        maxPostsPerRun: 10,
+        statePath,
+        nonUsTerms: undefined,
+        softwareKeywords: undefined
+      },
+      {
+        fetchListings: async () => [matchingListing('dry-1')],
+        postToDiscord: async (listing) => posted.push(listing),
+        now: () => new Date('2026-06-17T00:00:00.000Z')
+      }
+    );
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(posted, []);
+    assert.deepEqual(state, initialState);
+  });
 });

@@ -265,14 +265,20 @@ async function sendTestWebhook(config = getConfig()) {
   console.log('Posted test webhook message');
 }
 
-async function run(config = getConfig()) {
+export async function run(config = getConfig(), dependencies = {}) {
   if (!config.dryRun && !config.webhookUrl) {
     throw new Error('DISCORD_WEBHOOK_URL is required unless DRY_RUN=true');
   }
 
+  const fetchListingsForRun = dependencies.fetchListings ?? fetchListings;
+  const postListingForRun = dependencies.postToDiscord
+    ? (listing) => dependencies.postToDiscord(listing)
+    : (listing) => postToDiscord(config.webhookUrl, listing);
+  const now = dependencies.now ?? (() => new Date());
+
   const state = await loadState(config.statePath);
   const seen = new Set(state.seen);
-  const listings = await fetchListings(config.listingsUrl);
+  const listings = await fetchListingsForRun(config.listingsUrl);
   const matches = listings.filter((listing) => listingMatches(listing, config));
   const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing))).slice(0, config.maxPostsPerRun);
   const firstRun = state.seen.length === 0;
@@ -281,27 +287,28 @@ async function run(config = getConfig()) {
   console.log(`Found ${matches.length} matching U.S. CS 2027-ready hybrid/on-site internships`);
   console.log(`Found ${newMatches.length} new listings`);
 
+  if (config.dryRun) {
+    console.log('Dry run enabled, not posting to Discord');
+    return;
+  }
+
   if (firstRun && !config.postOnFirstRun) {
     const seeded = matches.map(createListingKey);
-    await saveState({ seen: seeded, lastRunAt: new Date().toISOString() }, config.statePath);
+    await saveState({ seen: seeded, lastRunAt: now().toISOString() }, config.statePath);
     console.log('Seeded existing listings');
     return;
   }
 
-  if (config.dryRun) {
-    console.log('Dry run enabled, not posting to Discord');
-  } else {
-    for (const listing of newMatches.map(normalizeListing)) {
-      await postToDiscord(config.webhookUrl, listing);
-      console.log(`Posted ${listing.company} - ${listing.title}`);
-    }
+  for (const listing of newMatches.map(normalizeListing)) {
+    await postListingForRun(listing);
+    console.log(`Posted ${listing.company} - ${listing.title}`);
   }
 
   for (const listing of newMatches) {
     seen.add(createListingKey(listing));
   }
 
-  await saveState({ seen: [...seen], lastRunAt: new Date().toISOString() }, config.statePath);
+  await saveState({ seen: [...seen], lastRunAt: now().toISOString() }, config.statePath);
 }
 
 const isCli = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
