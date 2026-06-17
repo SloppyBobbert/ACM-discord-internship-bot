@@ -103,7 +103,7 @@ export function normalizeListing(raw = {}) {
 
 function hasExcludedLocation(location, nonUsTerms = DEFAULT_NON_US_TERMS) {
   const normalized = location.toLowerCase();
-  return nonUsTerms.some((term) => normalized.includes(term.toLowerCase()));
+  return nonUsTerms.some((term) => keywordMatches(normalized, term.toLowerCase()));
 }
 
 export function isUsBasedListing(raw, nonUsTerms = DEFAULT_NON_US_TERMS) {
@@ -122,8 +122,8 @@ export function isHybridOrOnsiteListing(raw) {
   return listing.locations.some((location) => {
     const normalized = location.toLowerCase();
     const mentionsRemote = /\bremote\b/.test(normalized);
-    const mentionsHybrid = /\bhybrid\b/.test(normalized);
-    return mentionsHybrid || !mentionsRemote;
+    const hasSpecificLocation = US_STATE_LOCATION.test(location);
+    return hasSpecificLocation && !mentionsRemote;
   });
 }
 

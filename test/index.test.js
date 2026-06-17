@@ -48,6 +48,9 @@ test('normalizes the current SimplifyJobs listing shape defensively', () => {
 test('accepts U.S. city/state and rejects obvious non-U.S. locations', () => {
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Seattle, WA'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Austin, TX'] }), true);
+  assert.equal(isUsBasedListing({ ...baseListing, locations: ['Milwaukee, WI'] }), true);
+  assert.equal(isUsBasedListing({ ...baseListing, locations: ['Indianapolis, IN'] }), true);
+  assert.equal(isUsBasedListing({ ...baseListing, locations: ['Tukwila, WA'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Toronto, Canada'] }), false);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['London, UK'] }), false);
 });
@@ -55,6 +58,7 @@ test('accepts U.S. city/state and rejects obvious non-U.S. locations', () => {
 test('rejects remote-only roles and accepts on-site or hybrid locations', () => {
   assert.equal(isHybridOrOnsiteListing({ ...baseListing, locations: ['Remote in USA'] }), false);
   assert.equal(isHybridOrOnsiteListing({ ...baseListing, locations: ['Remote - United States'] }), false);
+  assert.equal(isHybridOrOnsiteListing({ ...baseListing, locations: ['United States'] }), false);
   assert.equal(isHybridOrOnsiteListing({ ...baseListing, locations: ['New York, NY'] }), true);
   assert.equal(isHybridOrOnsiteListing({ ...baseListing, locations: ['Hybrid - San Jose, CA'] }), true);
 });
@@ -77,6 +81,7 @@ test('matching requires visible active U.S. software internship for the target t
   assert.equal(listingMatches({ ...baseListing, is_visible: false }), false);
   assert.equal(listingMatches({ ...baseListing, url: '' }), false);
   assert.equal(listingMatches({ ...baseListing, locations: ['Remote in USA'] }), false);
+  assert.equal(listingMatches({ ...baseListing, locations: ['United States'] }), false);
   assert.equal(listingMatches({ ...baseListing, terms: ['Summer 2026'] }), false);
 });
 
