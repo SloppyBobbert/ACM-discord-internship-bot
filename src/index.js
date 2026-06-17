@@ -3,53 +3,35 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const SOURCE_REPO_URL = 'https://github.com/SimplifyJobs/Summer2026-Internships';
 const DEFAULT_LISTINGS_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json';
 const DEFAULT_STATE_PATH = 'data/seen.json';
-const DEFAULT_TARGET_TERMS = ['summer 2027'];
+
+const SUMMER_2027_TERM = 'summer 2027';
+const MAX_UNLISTED_WHEN_PRIORITY_IS_HIGH = 5;
+const MAX_UNLISTED_WHEN_PRIORITY_IS_LOW = 10;
 
 const US_STATES = 'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC';
 const US_STATE_LOCATION = new RegExp(`\\b[A-Z][A-Za-z .'-]+,\\s*(${US_STATES})\\b`);
 
-const DEFAULT_NON_US_TERMS = [
-  'canada',
-  'toronto',
-  'vancouver',
-  'uk',
-  'united kingdom',
-  'london',
-  'india',
-  'singapore',
-  'germany',
-  'france',
-  'netherlands'
-];
-
-const DEFAULT_SOFTWARE_KEYWORDS = [
+const SOFTWARE_KEYWORDS = [
   'software',
-  'software engineer',
   'swe',
   'developer',
   'backend',
   'frontend',
   'full stack',
-  'infrastructure',
-  'platform',
-  'cloud',
-  'security',
-  'machine learning',
-  'ai',
   'data science',
-  'ai/ml/data'
+  'machine learning',
+  'ai'
 ];
 
-const DEFAULT_BEST_COMPANIES = [
+const BEST_COMPANIES = [
   'Google',
-  'Alphabet',
   'Apple',
   'Microsoft',
   'Amazon',
   'Meta',
-  'Facebook',
   'Netflix',
   'NVIDIA',
   'OpenAI',
@@ -62,25 +44,23 @@ const DEFAULT_BEST_COMPANIES = [
   'Uber',
   'Airbnb',
   'DoorDash',
-  'Block',
-  'Square',
   'Coinbase',
   'Robinhood',
   'Jane Street',
   'Citadel',
-  'Citadel Securities',
   'Two Sigma',
   'Hudson River Trading',
-  'Jump Trading',
   'LinkedIn',
   'Salesforce',
   'Adobe',
   'Oracle',
   'AMD',
   'Broadcom',
-  'Intel',
-  'Qualcomm',
-  'Cisco',
+  'Intel'
+];
+
+const GOOD_COMPANIES = [
+  'Datadog',
   'Cloudflare',
   'ServiceNow',
   'Shopify',
@@ -89,20 +69,13 @@ const DEFAULT_BEST_COMPANIES = [
   'Dropbox',
   'GitHub',
   'MongoDB',
-  'Datadog',
   'CrowdStrike',
   'Palo Alto Networks',
-  'Zscaler'
-];
-
-const DEFAULT_GOOD_COMPANIES = [
+  'Zscaler',
   'Asana',
   'Box',
   'Twilio',
   'Okta',
-  'Splunk',
-  'Elastic',
-  'HashiCorp',
   'HubSpot',
   'Workday',
   'Intuit',
@@ -116,81 +89,24 @@ const DEFAULT_GOOD_COMPANIES = [
   'Canva',
   'Notion',
   'Airtable',
-  'Grammarly',
   'Rippling',
   'Ramp',
   'Plaid',
   'Brex',
-  'Chime',
   'Affirm',
-  'SoFi',
   'Lyft',
   'Instacart',
-  'Zipline',
   'Anduril',
   'Scale AI',
-  'Cohere',
-  'Perplexity',
-  'Hugging Face',
-  'Vercel',
-  'Netlify',
-  'Linear',
-  'Retool',
-  'Zapier',
-  'Sentry',
-  'GitLab',
-  'Docker',
-  'Confluent',
-  'Cockroach Labs',
-  'PlanetScale',
-  'Supabase',
-  'Vanta',
-  'Verkada',
-  'Samsara',
-  'AppLovin',
-  'Roku',
-  'Yelp',
-  'Zillow',
-  'Expedia',
-  'Wayfair',
-  'Chewy',
-  'Capital One',
-  'JPMorgan Chase',
-  'Goldman Sachs',
   'Bloomberg',
-  'The Trade Desk',
-  'Indeed',
-  'Workiva',
-  'Epic',
-  'Garmin',
-  'IBM',
-  'Hewlett Packard Enterprise',
-  'HP',
-  'Dell',
-  'Texas Instruments',
-  'Micron',
-  'Lam Research',
-  'ASML',
-  'Arm'
+  'Capital One',
+  'JPMorgan Chase'
 ];
 
 function envBoolean(name, defaultValue = false) {
   const value = process.env[name];
   if (value === undefined) return defaultValue;
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
-}
-
-function envInteger(name, defaultValue) {
-  const value = Number.parseInt(process.env[name] ?? '', 10);
-  return Number.isFinite(value) && value >= 0 ? value : defaultValue;
-}
-
-function splitConfigList(value, fallback) {
-  if (!value) return fallback;
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function normalizeDate(value) {
@@ -206,25 +122,20 @@ function normalizeDate(value) {
   return parsed.toISOString().slice(0, 10);
 }
 
-export function normalizeListing(raw = {}) {
-  const locations = Array.isArray(raw.locations)
-    ? raw.locations.filter(Boolean).map(String)
-    : raw.location
-      ? [String(raw.location)]
-      : [];
-  const terms = Array.isArray(raw.terms)
-    ? raw.terms.filter(Boolean).map(String)
-    : raw.term
-      ? [String(raw.term)]
-      : [];
+function normalizeStringList(arrayValue, singleValue) {
+  if (Array.isArray(arrayValue)) return arrayValue.filter(Boolean).map(String);
+  if (singleValue) return [String(singleValue)];
+  return [];
+}
 
+export function normalizeListing(raw = {}) {
   return {
     id: raw.id ? String(raw.id) : undefined,
     company: raw.company_name || raw.company || raw.companyName || 'Unknown',
     title: raw.title || raw.role || raw.position || 'Unknown role',
-    category: raw.category || '',
-    locations,
-    terms,
+    locations: normalizeStringList(raw.locations, raw.location),
+    countries: normalizeStringList(raw.countries, raw.country),
+    terms: normalizeStringList(raw.terms, raw.term),
     url: raw.url || raw.apply_url || raw.application_url || '',
     datePosted: normalizeDate(raw.date_posted || raw.datePosted || raw.posted_at),
     sponsorship: raw.sponsorship || undefined,
@@ -233,30 +144,21 @@ export function normalizeListing(raw = {}) {
   };
 }
 
-function hasExcludedLocation(location, nonUsTerms = DEFAULT_NON_US_TERMS) {
-  const normalized = location.toLowerCase();
-  return nonUsTerms.some((term) => keywordMatches(normalized, term.toLowerCase()));
+function isUsCountry(value) {
+  return /\b(usa|america)\b/i.test(value);
 }
 
-export function isUsBasedListing(raw, nonUsTerms = DEFAULT_NON_US_TERMS) {
+export function isUsBasedListing(raw) {
   const listing = normalizeListing(raw);
+  if (listing.countries.length > 0) return listing.countries.some(isUsCountry);
 
-  return listing.locations.some((location) => {
-    const normalized = location.toLowerCase();
-    if (hasExcludedLocation(location, nonUsTerms)) return false;
-    return US_STATE_LOCATION.test(location) || normalized.includes('united states') || /\busa\b/.test(normalized);
-  });
+  return listing.locations.some((location) => US_STATE_LOCATION.test(location) || isUsCountry(location));
 }
 
 export function isHybridOrOnsiteListing(raw) {
   const listing = normalizeListing(raw);
 
-  return listing.locations.some((location) => {
-    const normalized = location.toLowerCase();
-    const mentionsRemote = /\bremote\b/.test(normalized);
-    const hasSpecificLocation = US_STATE_LOCATION.test(location);
-    return hasSpecificLocation && !mentionsRemote;
-  });
+  return listing.locations.some((location) => US_STATE_LOCATION.test(location) && !/\bremote\b/i.test(location));
 }
 
 function keywordMatches(text, keyword) {
@@ -264,76 +166,31 @@ function keywordMatches(text, keyword) {
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
 }
 
-export function isSoftwareInternship(raw, keywords = DEFAULT_SOFTWARE_KEYWORDS) {
+export function isSoftwareInternship(raw) {
   const listing = normalizeListing(raw);
-  const searchable = listing.title.toLowerCase();
-
-  return keywords.some((keyword) => keywordMatches(searchable, keyword.toLowerCase()));
+  return SOFTWARE_KEYWORDS.some((keyword) => keywordMatches(listing.title.toLowerCase(), keyword));
 }
 
-export function isTargetTermListing(raw, targetTerms = DEFAULT_TARGET_TERMS) {
+export function isTargetTermListing(raw) {
   const listing = normalizeListing(raw);
-  const normalizedTargets = targetTerms.map((term) => term.toLowerCase());
-
-  return listing.terms.some((term) => normalizedTargets.includes(term.toLowerCase()));
-}
-
-function findCompanyIndex(company, companies) {
-  return companies.findIndex((rankedCompany) => keywordMatches(company, rankedCompany.toLowerCase()));
-}
-
-function compareNormalizedDates(a, b) {
-  const dateA = normalizeListing(a).datePosted ?? '';
-  const dateB = normalizeListing(b).datePosted ?? '';
-  return dateB.localeCompare(dateA);
-}
-
-function companyRank(raw, bestCompanies = DEFAULT_BEST_COMPANIES, goodCompanies = DEFAULT_GOOD_COMPANIES) {
-  const company = normalizeListing(raw).company.toLowerCase();
-  const bestIndex = findCompanyIndex(company, bestCompanies);
-  if (bestIndex !== -1) return { tier: 0, index: bestIndex };
-
-  const goodIndex = findCompanyIndex(company, goodCompanies);
-  if (goodIndex !== -1) return { tier: 1, index: goodIndex };
-
-  return { tier: 2, index: Number.MAX_SAFE_INTEGER };
-}
-
-export function sortListingsByRank(listings, options = {}) {
-  const bestCompanies = options.bestCompanies ?? DEFAULT_BEST_COMPANIES;
-  const goodCompanies = options.goodCompanies ?? DEFAULT_GOOD_COMPANIES;
-
-  return [...listings].sort((a, b) => {
-    const rankA = companyRank(a, bestCompanies, goodCompanies);
-    const rankB = companyRank(b, bestCompanies, goodCompanies);
-
-    if (rankA.tier !== rankB.tier) return rankA.tier - rankB.tier;
-    if (rankA.index !== rankB.index) return rankA.index - rankB.index;
-
-    const dateComparison = compareNormalizedDates(a, b);
-    if (dateComparison !== 0) return dateComparison;
-
-    const listingA = normalizeListing(a);
-    const listingB = normalizeListing(b);
-    return listingA.company.localeCompare(listingB.company) || listingA.title.localeCompare(listingB.title);
-  });
+  return listing.terms.some((term) => term.toLowerCase() === SUMMER_2027_TERM);
 }
 
 function fieldAllowsListing(value) {
   return value === undefined || value === null || value === true;
 }
 
-export function listingMatches(raw, options = {}) {
+export function listingMatches(raw) {
   const listing = normalizeListing(raw);
 
   return Boolean(
     listing.url &&
       fieldAllowsListing(listing.active) &&
       fieldAllowsListing(listing.visible) &&
-      isUsBasedListing(raw, options.nonUsTerms) &&
+      isUsBasedListing(raw) &&
       isHybridOrOnsiteListing(raw) &&
-      isTargetTermListing(raw, options.targetTerms) &&
-      isSoftwareInternship(raw, options.softwareKeywords)
+      isTargetTermListing(raw) &&
+      isSoftwareInternship(raw)
   );
 }
 
@@ -346,28 +203,88 @@ export function createListingKey(raw) {
   return `hash-${createHash('sha256').update(hashInput).digest('hex')}`;
 }
 
-export function buildDiscordPayload(listing) {
-  const locations = listing.locations?.join(', ') || 'Unknown';
-  const fields = [
-    { name: 'Company', value: listing.company || 'Unknown', inline: true },
-    { name: 'Location', value: locations, inline: true },
-    { name: 'Sponsorship', value: listing.sponsorship || 'Unknown', inline: true },
-    { name: 'Source', value: 'SimplifyJobs', inline: true }
-  ];
+function findCompanyIndex(company, companies) {
+  return companies.findIndex((rankedCompany) => keywordMatches(company.toLowerCase(), rankedCompany.toLowerCase()));
+}
 
-  if (listing.datePosted) {
-    fields.splice(3, 0, { name: 'Date posted', value: listing.datePosted, inline: true });
+function companyTier(company) {
+  const bestIndex = findCompanyIndex(company, BEST_COMPANIES);
+  if (bestIndex !== -1) return { tier: 'best', rank: 0, index: bestIndex };
+
+  const goodIndex = findCompanyIndex(company, GOOD_COMPANIES);
+  if (goodIndex !== -1) return { tier: 'good', rank: 1, index: goodIndex };
+
+  return { tier: 'other', rank: 2, index: Number.MAX_SAFE_INTEGER };
+}
+
+function compareNormalizedDates(a, b) {
+  return (normalizeListing(b).datePosted ?? '').localeCompare(normalizeListing(a).datePosted ?? '');
+}
+
+export function sortListingsForPosting(listings) {
+  return [...listings].sort((a, b) => {
+    const listingA = normalizeListing(a);
+    const listingB = normalizeListing(b);
+    const rankA = companyTier(listingA.company);
+    const rankB = companyTier(listingB.company);
+
+    if (rankA.rank !== rankB.rank) return rankA.rank - rankB.rank;
+    if (rankA.index !== rankB.index) return rankA.index - rankB.index;
+
+    const dateComparison = compareNormalizedDates(a, b);
+    if (dateComparison !== 0) return dateComparison;
+
+    return listingA.company.localeCompare(listingB.company) || listingA.title.localeCompare(listingB.title);
+  });
+}
+
+function groupListingsByCompany(listings) {
+  const groups = new Map();
+
+  for (const rawListing of listings) {
+    const listing = normalizeListing(rawListing);
+    const key = listing.company.toLowerCase();
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        company: listing.company,
+        tier: companyTier(listing.company).tier,
+        listings: []
+      });
+    }
+
+    groups.get(key).listings.push(listing);
   }
+
+  return [...groups.values()];
+}
+
+export function selectCompanyGroups(groups) {
+  const priorityGroups = groups.filter((group) => group.tier !== 'other');
+  const unlistedGroups = groups.filter((group) => group.tier === 'other');
+
+  const unlistedLimit = priorityGroups.length >= 10
+    ? MAX_UNLISTED_WHEN_PRIORITY_IS_HIGH
+    : MAX_UNLISTED_WHEN_PRIORITY_IS_LOW;
+
+  return [...priorityGroups, ...unlistedGroups.slice(0, unlistedLimit)];
+}
+
+export function buildDiscordPayload(companyPost) {
+  const roleLines = companyPost.listings.map((listing) => {
+    const locations = listing.locations.join(', ') || 'Unknown location';
+    return `- [${listing.title}](${listing.url}) — ${locations}`;
+  });
+  const roleCount = companyPost.listings.length;
 
   return {
     username: 'Internship Notifier',
     allowed_mentions: { parse: [] },
     embeds: [
       {
-        title: `${listing.company || 'Unknown'} - ${listing.title || 'Unknown role'}`.slice(0, 256),
-        url: listing.url,
-        description: locations,
-        fields
+        title: `${companyPost.company} (${roleCount} role${roleCount === 1 ? '' : 's'})`.slice(0, 256),
+        description: roleLines.join('\n').slice(0, 4096),
+        fields: [{ name: 'Source', value: `[SimplifyJobs internship repo](${SOURCE_REPO_URL})`, inline: false }]
       }
     ]
   };
@@ -408,11 +325,11 @@ async function saveState(state, path = DEFAULT_STATE_PATH) {
   await writeFile(path, body);
 }
 
-async function postToDiscord(webhookUrl, listing) {
+async function postToDiscord(webhookUrl, companyPost) {
   const response = await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(buildDiscordPayload(listing))
+    body: JSON.stringify(buildDiscordPayload(companyPost))
   });
 
   if (!response.ok) {
@@ -422,38 +339,12 @@ async function postToDiscord(webhookUrl, listing) {
 }
 
 function getConfig() {
-  const dryRun = envBoolean('DRY_RUN', false);
-
   return {
     listingsUrl: process.env.LISTINGS_URL || DEFAULT_LISTINGS_URL,
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || '',
-    dryRun,
-    postOnFirstRun: envBoolean('POST_ON_FIRST_RUN', false),
-    maxPostsPerRun: envInteger('MAX_POSTS_PER_RUN', 10),
-    statePath: process.env.STATE_PATH || DEFAULT_STATE_PATH,
-    targetTerms: splitConfigList(process.env.TARGET_TERMS, DEFAULT_TARGET_TERMS),
-    nonUsTerms: splitConfigList(process.env.NON_US_LOCATION_TERMS, DEFAULT_NON_US_TERMS),
-    softwareKeywords: splitConfigList(process.env.SOFTWARE_KEYWORDS, DEFAULT_SOFTWARE_KEYWORDS),
-    bestCompanies: splitConfigList(process.env.BEST_COMPANIES, DEFAULT_BEST_COMPANIES),
-    goodCompanies: splitConfigList(process.env.GOOD_COMPANIES, DEFAULT_GOOD_COMPANIES)
+    dryRun: envBoolean('DRY_RUN', false),
+    statePath: DEFAULT_STATE_PATH
   };
-}
-
-async function sendTestWebhook(config = getConfig()) {
-  if (!config.webhookUrl) {
-    throw new Error('DISCORD_WEBHOOK_URL is required for --test-webhook');
-  }
-
-  await postToDiscord(config.webhookUrl, {
-    company: 'Internship Notifier',
-    title: 'Test message',
-    locations: ['Chico, CA'],
-    url: 'https://github.com/SimplifyJobs/Summer2026-Internships',
-    sponsorship: 'Unknown',
-    datePosted: new Date().toISOString().slice(0, 10)
-  });
-
-  console.log('Posted test webhook message');
 }
 
 export async function run(config = getConfig(), dependencies = {}) {
@@ -462,54 +353,55 @@ export async function run(config = getConfig(), dependencies = {}) {
   }
 
   const fetchListingsForRun = dependencies.fetchListings ?? fetchListings;
-  const postListingForRun = dependencies.postToDiscord
-    ? (listing) => dependencies.postToDiscord(listing)
-    : (listing) => postToDiscord(config.webhookUrl, listing);
+  const postCompanyForRun = dependencies.postToDiscord
+    ? (companyPost) => dependencies.postToDiscord(companyPost)
+    : (companyPost) => postToDiscord(config.webhookUrl, companyPost);
   const now = dependencies.now ?? (() => new Date());
+  const listingsUrl = config.listingsUrl || DEFAULT_LISTINGS_URL;
+  const statePath = config.statePath || DEFAULT_STATE_PATH;
 
-  const state = await loadState(config.statePath);
+  const state = await loadState(statePath);
   const seen = new Set(state.seen);
-  const listings = await fetchListingsForRun(config.listingsUrl);
-  const matches = sortListingsByRank(listings.filter((listing) => listingMatches(listing, config)), config);
-  const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing))).slice(0, config.maxPostsPerRun);
+  const listings = await fetchListingsForRun(listingsUrl);
+  const matches = sortListingsForPosting(listings.filter(listingMatches));
+  const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing)));
+  const companyPosts = selectCompanyGroups(groupListingsByCompany(newMatches));
   const firstRun = state.lastRunAt === null;
   const runAt = now().toISOString();
-  const targetTerms = config.targetTerms ?? DEFAULT_TARGET_TERMS;
 
   console.log(`Fetched ${listings.length} listings`);
-  console.log(`Found ${matches.length} matching U.S. CS/software ${targetTerms.join(', ')} hybrid/on-site internships`);
-  console.log(`Found ${newMatches.length} new listings`);
+  console.log('Found %d matching U.S. Summer 2027 hybrid/on-site CS/software, AI, or data internships', matches.length);
+  console.log(`Found ${newMatches.length} new listings in ${companyPosts.length} company posts`);
 
   if (config.dryRun) {
     console.log('Dry run enabled, not posting to Discord');
     return;
   }
 
-  if (firstRun && !config.postOnFirstRun) {
-    const seeded = matches.map(createListingKey);
-    await saveState({ seen: seeded, lastRunAt: runAt }, config.statePath);
+  if (firstRun) {
+    await saveState({ seen: matches.map(createListingKey), lastRunAt: runAt }, statePath);
     console.log('Seeded existing listings');
     return;
   }
 
-  for (const rawListing of newMatches) {
-    const listing = normalizeListing(rawListing);
-    await postListingForRun(listing);
-    seen.add(createListingKey(rawListing));
-    await saveState({ seen: [...seen], lastRunAt: runAt }, config.statePath);
-    console.log(`Posted ${listing.company} - ${listing.title}`);
+  for (const companyPost of companyPosts) {
+    await postCompanyForRun(companyPost);
+
+    for (const listing of companyPost.listings) {
+      seen.add(createListingKey(listing));
+    }
+
+    await saveState({ seen: [...seen], lastRunAt: runAt }, statePath);
+    console.log(`Posted ${companyPost.company} (${companyPost.listings.map((listing) => listing.title).join(', ')})`);
   }
 
-  await saveState({ seen: [...seen], lastRunAt: runAt }, config.statePath);
+  await saveState({ seen: [...seen], lastRunAt: runAt }, statePath);
 }
 
 const isCli = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isCli) {
-  const command = process.argv[2];
-  const action = command === '--test-webhook' ? sendTestWebhook : run;
-
-  action().catch((error) => {
+  run().catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
   });

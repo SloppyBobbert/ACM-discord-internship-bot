@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -14,14 +14,14 @@ import {
   listingMatches,
   normalizeListing,
   run,
-  sortListingsByRank
+  selectCompanyGroups,
+  sortListingsForPosting
 } from '../src/index.js';
 
 const baseListing = {
   id: 'job-1',
   company_name: 'Example Co',
   title: 'Software Engineering Intern',
-  category: 'Software Engineering',
   active: true,
   is_visible: true,
   url: 'https://example.com/apply',
@@ -46,14 +46,17 @@ test('normalizes the current SimplifyJobs listing shape defensively', () => {
   assert.equal(normalized.datePosted, '2025-10-20');
 });
 
-test('accepts U.S. city/state and rejects obvious non-U.S. locations', () => {
+test('accepts only USA/America country or U.S. city/state locations', () => {
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Seattle, WA'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Austin, TX'] }), true);
+  assert.equal(isUsBasedListing({ ...baseListing, country: 'USA' }), true);
+  assert.equal(isUsBasedListing({ ...baseListing, country: 'America' }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Milwaukee, WI'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Indianapolis, IN'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Tukwila, WA'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Toronto, Canada'] }), false);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['London, UK'] }), false);
+  assert.equal(isUsBasedListing({ ...baseListing, country: 'Canada' }), false);
 });
 
 test('rejects remote-only roles and accepts on-site or hybrid locations', () => {
@@ -66,20 +69,20 @@ test('rejects remote-only roles and accepts on-site or hybrid locations', () => 
 
 test('accepts software internships and rejects unrelated internships', () => {
   assert.equal(isSoftwareInternship(baseListing), true);
-  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Product Manager Intern', category: 'Product' }), false);
-  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Tax Technology Intern', category: 'Software' }), false);
-  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Electricity + Natural Gas Analyst Intern', category: 'AI/ML/Data' }), false);
-  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Data Science Intern', category: 'Business' }), true);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Product Manager Intern' }), false);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Tax Technology Intern' }), false);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Electricity + Natural Gas Analyst Intern' }), false);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Data Science Intern' }), true);
 });
 
-test('accepts only configured target terms', () => {
+test('accepts only the hardcoded Summer 2027 term', () => {
   assert.equal(isTargetTermListing(baseListing), true);
   assert.equal(isTargetTermListing({ ...baseListing, terms: ['Summer 2026'] }), false);
-  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Fall 2026'] }, ['fall 2026']), true);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Fall 2026'] }), false);
   assert.equal(isTargetTermListing({ ...baseListing, terms: [] }), false);
 });
 
-test('matching requires visible active U.S. software internship for the target term with apply URL and on-site or hybrid location', () => {
+test('matching requires visible active U.S. software internship for Summer 2027 with apply URL and on-site or hybrid location', () => {
   assert.equal(listingMatches(baseListing), true);
   assert.equal(listingMatches({ ...baseListing, active: false }), false);
   assert.equal(listingMatches({ ...baseListing, is_visible: false }), false);
@@ -97,30 +100,36 @@ test('creates stable listing keys by id, then url, then content hash', () => {
   assert.match(key, /^hash-[a-f0-9]{64}$/);
 });
 
-test('builds safe Discord webhook embeds without accidental mentions', () => {
-  const payload = buildDiscordPayload(normalizeListing(baseListing));
+test('builds safe Discord webhook embeds with grouped company roles and source repo link', () => {
+  const payload = buildDiscordPayload({
+    company: 'Google',
+    listings: [
+      normalizeListing({ ...baseListing, company_name: 'Google', title: 'Software Engineering Intern', url: 'https://example.com/swe' }),
+      normalizeListing({ ...baseListing, company_name: 'Google', title: 'Data Science Intern', url: 'https://example.com/data' })
+    ]
+  });
 
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
   assert.equal(payload.username, 'Internship Notifier');
-  assert.equal(payload.embeds[0].title, 'Example Co - Software Engineering Intern');
-  assert.equal(payload.embeds[0].url, 'https://example.com/apply');
-  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Source' && field.value === 'SimplifyJobs'), true);
+  assert.equal(payload.embeds[0].title, 'Google (2 roles)');
+  assert.match(payload.embeds[0].description, /\[Software Engineering Intern\]\(https:\/\/example\.com\/swe\)/);
+  assert.match(payload.embeds[0].description, /\[Data Science Intern\]\(https:\/\/example\.com\/data\)/);
+  assert.equal(
+    payload.embeds[0].fields.some(
+      (field) => field.name === 'Source' && field.value.includes('https://github.com/SimplifyJobs/Summer2026-Internships')
+    ),
+    true
+  );
 });
 
-test('sorts listings by best companies, good companies, then newest fallback', () => {
-  const sorted = sortListingsByRank(
-    [
-      { ...baseListing, id: 'unlisted-newer', company_name: 'Local Startup', title: 'Software Intern', date_posted: '2026-06-04' },
-      { ...baseListing, id: 'good', company_name: 'Datadog', title: 'Software Intern', date_posted: '2026-06-01' },
-      { ...baseListing, id: 'unlisted-older', company_name: 'Another Startup', title: 'Software Intern', date_posted: '2026-06-03' },
-      { ...baseListing, id: 'best-second', company_name: 'Apple', title: 'Software Intern', date_posted: '2026-06-02' },
-      { ...baseListing, id: 'best-first', company_name: 'Google', title: 'Software Intern', date_posted: '2026-06-01' }
-    ],
-    {
-      bestCompanies: ['Google', 'Apple'],
-      goodCompanies: ['Datadog']
-    }
-  );
+test('sorts listings by hardcoded priority companies, then newest fallback', () => {
+  const sorted = sortListingsForPosting([
+    { ...baseListing, id: 'unlisted-newer', company_name: 'Local Startup', title: 'Software Intern', date_posted: '2026-06-04' },
+    { ...baseListing, id: 'good', company_name: 'Datadog', title: 'Software Intern', date_posted: '2026-06-01' },
+    { ...baseListing, id: 'unlisted-older', company_name: 'Another Startup', title: 'Software Intern', date_posted: '2026-06-03' },
+    { ...baseListing, id: 'best-second', company_name: 'Apple', title: 'Software Intern', date_posted: '2026-06-02' },
+    { ...baseListing, id: 'best-first', company_name: 'Google', title: 'Software Intern', date_posted: '2026-06-01' }
+  ]);
 
   assert.deepEqual(sorted.map((listing) => listing.id), [
     'best-first',
@@ -129,6 +138,37 @@ test('sorts listings by best companies, good companies, then newest fallback', (
     'unlisted-newer',
     'unlisted-older'
   ]);
+});
+
+test('selects unlimited priority companies and caps unlisted company posts by priority volume', () => {
+  const priorityGroups = Array.from({ length: 10 }, (_, index) => ({
+    company: `Priority ${index}`,
+    tier: 'best',
+    listings: [normalizeListing({ ...baseListing, id: `priority-${index}`, company_name: `Priority ${index}` })]
+  }));
+  const unlistedGroups = Array.from({ length: 11 }, (_, index) => ({
+    company: `Startup ${index}`,
+    tier: 'other',
+    listings: [normalizeListing({ ...baseListing, id: `startup-${index}`, company_name: `Startup ${index}` })]
+  }));
+
+  assert.equal(selectCompanyGroups([...priorityGroups, ...unlistedGroups]).length, 15);
+  assert.deepEqual(
+    selectCompanyGroups([...priorityGroups, ...unlistedGroups]).slice(-5).map((group) => group.company),
+    ['Startup 0', 'Startup 1', 'Startup 2', 'Startup 3', 'Startup 4']
+  );
+
+  assert.equal(selectCompanyGroups([...priorityGroups.slice(0, 8), ...unlistedGroups]).length, 18);
+  assert.deepEqual(
+    selectCompanyGroups([...priorityGroups.slice(0, 8), ...unlistedGroups]).slice(-10).map((group) => group.company),
+    ['Startup 0', 'Startup 1', 'Startup 2', 'Startup 3', 'Startup 4', 'Startup 5', 'Startup 6', 'Startup 7', 'Startup 8', 'Startup 9']
+  );
+
+  assert.equal(selectCompanyGroups([...priorityGroups.slice(0, 5), ...unlistedGroups]).length, 15);
+  assert.deepEqual(
+    selectCompanyGroups([...priorityGroups.slice(0, 5), ...unlistedGroups]).slice(-10).map((group) => group.company),
+    ['Startup 0', 'Startup 1', 'Startup 2', 'Startup 3', 'Startup 4', 'Startup 5', 'Startup 6', 'Startup 7', 'Startup 8', 'Startup 9']
+  );
 });
 
 async function withTempState(testBody) {
@@ -151,7 +191,7 @@ function matchingListing(id, title = 'Software Engineering Intern') {
   };
 }
 
-test('first run seeds matching listings without posting when POST_ON_FIRST_RUN is false', async () => {
+test('first run seeds matching listings without posting', async () => {
   await withTempState(async (statePath) => {
     const posted = [];
 
@@ -159,15 +199,11 @@ test('first run seeds matching listings without posting when POST_ON_FIRST_RUN i
       {
         dryRun: false,
         webhookUrl: 'https://discord.example/webhook',
-        postOnFirstRun: false,
-        maxPostsPerRun: 10,
-        statePath,
-        nonUsTerms: undefined,
-        softwareKeywords: undefined
+        statePath
       },
       {
         fetchListings: async () => [matchingListing('seed-1'), matchingListing('seed-2')],
-        postToDiscord: async (listing) => posted.push(listing),
+        postToDiscord: async (companyPost) => posted.push(companyPost),
         now: () => new Date('2026-06-17T00:00:00.000Z')
       }
     );
@@ -187,16 +223,11 @@ test('second run posts new listings after an empty first run initialized state',
       {
         dryRun: false,
         webhookUrl: 'https://discord.example/webhook',
-        postOnFirstRun: false,
-        maxPostsPerRun: 10,
-        statePath,
-        nonUsTerms: undefined,
-        softwareKeywords: undefined,
-        targetTerms: undefined
+        statePath
       },
       {
         fetchListings: async () => [],
-        postToDiscord: async (listing) => posted.push(listing.id),
+        postToDiscord: async (companyPost) => posted.push(companyPost.company),
         now: () => new Date('2026-06-17T00:00:00.000Z')
       }
     );
@@ -205,61 +236,52 @@ test('second run posts new listings after an empty first run initialized state',
       {
         dryRun: false,
         webhookUrl: 'https://discord.example/webhook',
-        postOnFirstRun: false,
-        maxPostsPerRun: 10,
-        statePath,
-        nonUsTerms: undefined,
-        softwareKeywords: undefined,
-        targetTerms: undefined
+        statePath
       },
       {
         fetchListings: async () => [matchingListing('later-1')],
-        postToDiscord: async (listing) => posted.push(listing.id),
+        postToDiscord: async (companyPost) => posted.push(companyPost.company),
         now: () => new Date('2026-06-17T00:30:00.000Z')
       }
     );
 
     const state = JSON.parse(await readFile(statePath, 'utf8'));
-    assert.deepEqual(posted, ['later-1']);
+    assert.deepEqual(posted, ['Example Co']);
     assert.deepEqual(state.seen, ['later-1']);
     assert.equal(state.lastRunAt, '2026-06-17T00:30:00.000Z');
   });
 });
 
-test('posting honors MAX_POSTS_PER_RUN and saves only posted listing keys', async () => {
+test('posting groups duplicate companies and saves all posted listing keys', async () => {
   await withTempState(async (statePath) => {
-    await writeFile(statePath, `${JSON.stringify({ seen: ['already-seen'], lastRunAt: null }, null, 2)}\n`);
+    await writeFile(statePath, `${JSON.stringify({ seen: ['already-seen'], lastRunAt: '2026-06-16T00:00:00.000Z' }, null, 2)}\n`);
     const posted = [];
 
     await run(
       {
         dryRun: false,
         webhookUrl: 'https://discord.example/webhook',
-        postOnFirstRun: true,
-        maxPostsPerRun: 2,
-        statePath,
-        nonUsTerms: undefined,
-        softwareKeywords: undefined
+        statePath
       },
       {
         fetchListings: async () => [
           matchingListing('already-seen'),
-          matchingListing('new-1'),
-          matchingListing('new-2'),
-          matchingListing('new-3')
+          { ...matchingListing('google-1'), company_name: 'Google', title: 'Software Engineering Intern' },
+          { ...matchingListing('google-2'), company_name: 'Google', title: 'Data Science Intern' },
+          { ...matchingListing('apple-1'), company_name: 'Apple', title: 'Software Intern' }
         ],
-        postToDiscord: async (listing) => posted.push(listing.id),
+        postToDiscord: async (companyPost) => posted.push(`${companyPost.company}(${companyPost.listings.map((listing) => listing.title).join(', ')})`),
         now: () => new Date('2026-06-17T00:00:00.000Z')
       }
     );
 
     const state = JSON.parse(await readFile(statePath, 'utf8'));
-    assert.deepEqual(posted, ['new-1', 'new-2']);
-    assert.deepEqual(state.seen, ['already-seen', 'new-1', 'new-2']);
+    assert.deepEqual(posted, ['Google(Data Science Intern, Software Engineering Intern)', 'Apple(Software Intern)']);
+    assert.deepEqual(state.seen, ['already-seen', 'google-2', 'google-1', 'apple-1']);
   });
 });
 
-test('daily posting cap uses ranked listing order before posting', async () => {
+test('daily company post selection uses ranked grouped order before posting', async () => {
   await withTempState(async (statePath) => {
     await writeFile(statePath, `${JSON.stringify({ seen: [], lastRunAt: '2026-06-16T00:00:00.000Z' }, null, 2)}\n`);
     const posted = [];
@@ -268,14 +290,7 @@ test('daily posting cap uses ranked listing order before posting', async () => {
       {
         dryRun: false,
         webhookUrl: 'https://discord.example/webhook',
-        postOnFirstRun: true,
-        maxPostsPerRun: 3,
-        statePath,
-        nonUsTerms: undefined,
-        softwareKeywords: undefined,
-        targetTerms: undefined,
-        bestCompanies: ['Google', 'Apple'],
-        goodCompanies: ['Datadog']
+        statePath
       },
       {
         fetchListings: async () => [
@@ -284,18 +299,18 @@ test('daily posting cap uses ranked listing order before posting', async () => {
           { ...matchingListing('best-second'), company_name: 'Apple', date_posted: '2026-06-02' },
           { ...matchingListing('best-first'), company_name: 'Google', date_posted: '2026-06-01' }
         ],
-        postToDiscord: async (listing) => posted.push(listing.id),
+        postToDiscord: async (companyPost) => posted.push(companyPost.company),
         now: () => new Date('2026-06-17T19:00:00.000Z')
       }
     );
 
     const state = JSON.parse(await readFile(statePath, 'utf8'));
-    assert.deepEqual(posted, ['best-first', 'best-second', 'good']);
-    assert.deepEqual(state.seen, ['best-first', 'best-second', 'good']);
+    assert.deepEqual(posted, ['Google', 'Apple', 'Datadog', 'Local Startup']);
+    assert.deepEqual(state.seen, ['best-first', 'best-second', 'good', 'unlisted-newer']);
   });
 });
 
-test('saved state includes successful posts when a later Discord post fails', async () => {
+test('saved state includes successful company posts when a later Discord post fails', async () => {
   await withTempState(async (statePath) => {
     await writeFile(statePath, `${JSON.stringify({ seen: ['already-seen'], lastRunAt: '2026-06-16T00:00:00.000Z' }, null, 2)}\n`);
     const posted = [];
@@ -305,18 +320,16 @@ test('saved state includes successful posts when a later Discord post fails', as
         {
           dryRun: false,
           webhookUrl: 'https://discord.example/webhook',
-          postOnFirstRun: true,
-          maxPostsPerRun: 10,
-          statePath,
-          nonUsTerms: undefined,
-          softwareKeywords: undefined,
-          targetTerms: undefined
+          statePath
         },
         {
-          fetchListings: async () => [matchingListing('new-1'), matchingListing('new-2')],
-          postToDiscord: async (listing) => {
-            if (listing.id === 'new-2') throw new Error('Discord rejected the post');
-            posted.push(listing.id);
+          fetchListings: async () => [
+            { ...matchingListing('new-1'), company_name: 'Google' },
+            { ...matchingListing('new-2'), company_name: 'Local Startup' }
+          ],
+          postToDiscord: async (companyPost) => {
+            if (companyPost.company === 'Local Startup') throw new Error('Discord rejected the post');
+            posted.push(...companyPost.listings.map((listing) => listing.id));
           },
           now: () => new Date('2026-06-17T00:00:00.000Z')
         }
@@ -341,15 +354,11 @@ test('dry run does not post or mutate seen state', async () => {
       {
         dryRun: true,
         webhookUrl: '',
-        postOnFirstRun: true,
-        maxPostsPerRun: 10,
-        statePath,
-        nonUsTerms: undefined,
-        softwareKeywords: undefined
+        statePath
       },
       {
         fetchListings: async () => [matchingListing('dry-1')],
-        postToDiscord: async (listing) => posted.push(listing),
+        postToDiscord: async (companyPost) => posted.push(companyPost),
         now: () => new Date('2026-06-17T00:00:00.000Z')
       }
     );
