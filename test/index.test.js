@@ -9,6 +9,7 @@ import {
   createListingKey,
   isHybridOrOnsiteListing,
   isSoftwareInternship,
+  isTargetTermListing,
   isUsBasedListing,
   listingMatches,
   normalizeListing,
@@ -24,6 +25,7 @@ const baseListing = {
   is_visible: true,
   url: 'https://example.com/apply',
   locations: ['San Francisco, CA'],
+  terms: ['Summer 2027'],
   sponsorship: 'Unknown',
   date_posted: 1760990869
 };
@@ -35,6 +37,7 @@ test('normalizes the current SimplifyJobs listing shape defensively', () => {
   assert.equal(normalized.company, 'Example Co');
   assert.equal(normalized.title, 'Software Engineering Intern');
   assert.deepEqual(normalized.locations, ['San Francisco, CA']);
+  assert.deepEqual(normalized.terms, ['Summer 2027']);
   assert.equal(normalized.url, 'https://example.com/apply');
   assert.equal(normalized.active, true);
   assert.equal(normalized.visible, true);
@@ -61,12 +64,20 @@ test('accepts software internships and rejects unrelated internships', () => {
   assert.equal(isSoftwareInternship({ ...baseListing, title: 'Product Manager Intern', category: 'Product' }), false);
 });
 
-test('matching requires visible active U.S. software internship with apply URL and on-site or hybrid location', () => {
+test('accepts only configured target terms', () => {
+  assert.equal(isTargetTermListing(baseListing), true);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Summer 2026'] }), false);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Fall 2026'] }, ['fall 2026']), true);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: [] }), false);
+});
+
+test('matching requires visible active U.S. software internship for the target term with apply URL and on-site or hybrid location', () => {
   assert.equal(listingMatches(baseListing), true);
   assert.equal(listingMatches({ ...baseListing, active: false }), false);
   assert.equal(listingMatches({ ...baseListing, is_visible: false }), false);
   assert.equal(listingMatches({ ...baseListing, url: '' }), false);
   assert.equal(listingMatches({ ...baseListing, locations: ['Remote in USA'] }), false);
+  assert.equal(listingMatches({ ...baseListing, terms: ['Summer 2026'] }), false);
 });
 
 test('creates stable listing keys by id, then url, then content hash', () => {

@@ -8,6 +8,7 @@ The notifier only posts new matching roles to Discord and tracks seen listings i
 
 - U.S. locations
 - CS/software-related internship titles or categories
+- Summer 2027 listings by default
 - Hybrid or on-site roles only
 - Listings with an apply URL
 - Active and visible listings when those fields exist
@@ -59,8 +60,11 @@ node src/index.js --test-webhook
 | `POST_ON_FIRST_RUN` | `false` | Seeds current matches without posting on first run |
 | `MAX_POSTS_PER_RUN` | `10` | Caps Discord posts per run |
 | `LISTINGS_URL` | Summer 2026 SimplifyJobs JSON | Replace with the Summer 2027 JSON when available |
+| `TARGET_TERMS` | `summer 2027` | Comma-separated terms to match from the SimplifyJobs `terms` field |
 | `NON_US_LOCATION_TERMS` | built-in list | Optional comma-separated override |
 | `SOFTWARE_KEYWORDS` | built-in list | Optional comma-separated override |
+
+While the default source still points at the Summer 2026 JSON, the notifier only keeps listings whose SimplifyJobs `terms` include the configured target. Override `TARGET_TERMS` only for local testing or if the target season changes.
 
 ## GitHub Actions
 

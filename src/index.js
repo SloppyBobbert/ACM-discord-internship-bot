@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const DEFAULT_LISTINGS_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json';
 const DEFAULT_STATE_PATH = 'data/seen.json';
+const DEFAULT_TARGET_TERMS = ['summer 2027'];
 
 const US_STATES = 'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC';
 const US_STATE_LOCATION = new RegExp(`\\b[A-Z][A-Za-z .'-]+,\\s*(${US_STATES})\\b`);
@@ -79,6 +80,11 @@ export function normalizeListing(raw = {}) {
     : raw.location
       ? [String(raw.location)]
       : [];
+  const terms = Array.isArray(raw.terms)
+    ? raw.terms.filter(Boolean).map(String)
+    : raw.term
+      ? [String(raw.term)]
+      : [];
 
   return {
     id: raw.id ? String(raw.id) : undefined,
@@ -86,6 +92,7 @@ export function normalizeListing(raw = {}) {
     title: raw.title || raw.role || raw.position || 'Unknown role',
     category: raw.category || '',
     locations,
+    terms,
     url: raw.url || raw.apply_url || raw.application_url || '',
     datePosted: normalizeDate(raw.date_posted || raw.datePosted || raw.posted_at),
     sponsorship: raw.sponsorship || undefined,
@@ -132,6 +139,13 @@ export function isSoftwareInternship(raw, keywords = DEFAULT_SOFTWARE_KEYWORDS) 
   return keywords.some((keyword) => keywordMatches(searchable, keyword.toLowerCase()));
 }
 
+export function isTargetTermListing(raw, targetTerms = DEFAULT_TARGET_TERMS) {
+  const listing = normalizeListing(raw);
+  const normalizedTargets = targetTerms.map((term) => term.toLowerCase());
+
+  return listing.terms.some((term) => normalizedTargets.includes(term.toLowerCase()));
+}
+
 function fieldAllowsListing(value) {
   return value === undefined || value === null || value === true;
 }
@@ -145,6 +159,7 @@ export function listingMatches(raw, options = {}) {
       fieldAllowsListing(listing.visible) &&
       isUsBasedListing(raw, options.nonUsTerms) &&
       isHybridOrOnsiteListing(raw) &&
+      isTargetTermListing(raw, options.targetTerms) &&
       isSoftwareInternship(raw, options.softwareKeywords)
   );
 }
@@ -243,6 +258,7 @@ function getConfig() {
     postOnFirstRun: envBoolean('POST_ON_FIRST_RUN', false),
     maxPostsPerRun: envInteger('MAX_POSTS_PER_RUN', 10),
     statePath: process.env.STATE_PATH || DEFAULT_STATE_PATH,
+    targetTerms: splitConfigList(process.env.TARGET_TERMS, DEFAULT_TARGET_TERMS),
     nonUsTerms: splitConfigList(process.env.NON_US_LOCATION_TERMS, DEFAULT_NON_US_TERMS),
     softwareKeywords: splitConfigList(process.env.SOFTWARE_KEYWORDS, DEFAULT_SOFTWARE_KEYWORDS)
   };

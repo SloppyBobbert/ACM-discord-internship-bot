@@ -38,6 +38,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           POST_ON_FIRST_RUN: "false"
           MAX_POSTS_PER_RUN: "10"
+          TARGET_TERMS: "summer 2027"
 
       - name: Commit updated seen state
         run: |
