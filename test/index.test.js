@@ -66,6 +66,9 @@ test('rejects remote-only roles and accepts on-site or hybrid locations', () => 
 test('accepts software internships and rejects unrelated internships', () => {
   assert.equal(isSoftwareInternship(baseListing), true);
   assert.equal(isSoftwareInternship({ ...baseListing, title: 'Product Manager Intern', category: 'Product' }), false);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Tax Technology Intern', category: 'Software' }), false);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Electricity + Natural Gas Analyst Intern', category: 'AI/ML/Data' }), false);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Data Science Intern', category: 'Business' }), true);
 });
 
 test('accepts only configured target terms', () => {

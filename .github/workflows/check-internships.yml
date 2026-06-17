@@ -33,6 +33,8 @@ jobs:
         run: npm test
 
       - name: Check internship listings
+        id: check-listings
+        continue-on-error: true
         run: node src/index.js
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -41,6 +43,7 @@ jobs:
           TARGET_TERMS: "summer 2027"
 
       - name: Commit updated seen state
+        if: always()
         run: |
           if [ -n "$(git status --porcelain data/seen.json)" ]; then
             git config user.name "github-actions[bot]"
@@ -52,3 +55,7 @@ jobs:
           else
             echo "No seen state changes to commit."
           fi
+
+      - name: Fail if notifier failed
+        if: steps.check-listings.outcome == 'failure'
+        run: exit 1

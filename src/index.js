@@ -134,7 +134,7 @@ function keywordMatches(text, keyword) {
 
 export function isSoftwareInternship(raw, keywords = DEFAULT_SOFTWARE_KEYWORDS) {
   const listing = normalizeListing(raw);
-  const searchable = `${listing.title} ${listing.category}`.toLowerCase();
+  const searchable = listing.title.toLowerCase();
 
   return keywords.some((keyword) => keywordMatches(searchable, keyword.toLowerCase()));
 }
