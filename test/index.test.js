@@ -146,6 +146,53 @@ test('first run seeds matching listings without posting when POST_ON_FIRST_RUN i
   });
 });
 
+test('second run posts new listings after an empty first run initialized state', async () => {
+  await withTempState(async (statePath) => {
+    const posted = [];
+
+    await run(
+      {
+        dryRun: false,
+        webhookUrl: 'https://discord.example/webhook',
+        postOnFirstRun: false,
+        maxPostsPerRun: 10,
+        statePath,
+        nonUsTerms: undefined,
+        softwareKeywords: undefined,
+        targetTerms: undefined
+      },
+      {
+        fetchListings: async () => [],
+        postToDiscord: async (listing) => posted.push(listing.id),
+        now: () => new Date('2026-06-17T00:00:00.000Z')
+      }
+    );
+
+    await run(
+      {
+        dryRun: false,
+        webhookUrl: 'https://discord.example/webhook',
+        postOnFirstRun: false,
+        maxPostsPerRun: 10,
+        statePath,
+        nonUsTerms: undefined,
+        softwareKeywords: undefined,
+        targetTerms: undefined
+      },
+      {
+        fetchListings: async () => [matchingListing('later-1')],
+        postToDiscord: async (listing) => posted.push(listing.id),
+        now: () => new Date('2026-06-17T00:30:00.000Z')
+      }
+    );
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(posted, ['later-1']);
+    assert.deepEqual(state.seen, ['later-1']);
+    assert.equal(state.lastRunAt, '2026-06-17T00:30:00.000Z');
+  });
+});
+
 test('posting honors MAX_POSTS_PER_RUN and saves only posted listing keys', async () => {
   await withTempState(async (statePath) => {
     await writeFile(statePath, `${JSON.stringify({ seen: ['already-seen'], lastRunAt: null }, null, 2)}\n`);

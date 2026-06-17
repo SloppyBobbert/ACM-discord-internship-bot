@@ -297,7 +297,7 @@ export async function run(config = getConfig(), dependencies = {}) {
   const listings = await fetchListingsForRun(config.listingsUrl);
   const matches = listings.filter((listing) => listingMatches(listing, config));
   const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing))).slice(0, config.maxPostsPerRun);
-  const firstRun = state.seen.length === 0;
+  const firstRun = state.lastRunAt === null;
 
   console.log(`Fetched ${listings.length} listings`);
   console.log(`Found ${matches.length} matching U.S. CS 2027-ready hybrid/on-site internships`);
