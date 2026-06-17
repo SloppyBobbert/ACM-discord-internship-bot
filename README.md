@@ -7,7 +7,7 @@ The notifier only posts new matching roles to Discord and tracks seen listings i
 ## What it matches
 
 - U.S. locations
-- CS/software-related internship titles
+- CS/software, AI, or data-related internship titles
 - Summer 2027 listings by default
 - Hybrid or on-site roles only
 - Listings with an apply URL

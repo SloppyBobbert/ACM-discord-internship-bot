@@ -299,9 +299,10 @@ export async function run(config = getConfig(), dependencies = {}) {
   const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing))).slice(0, config.maxPostsPerRun);
   const firstRun = state.lastRunAt === null;
   const runAt = now().toISOString();
+  const targetTerms = config.targetTerms ?? DEFAULT_TARGET_TERMS;
 
   console.log(`Fetched ${listings.length} listings`);
-  console.log(`Found ${matches.length} matching U.S. CS 2027-ready hybrid/on-site internships`);
+  console.log(`Found ${matches.length} matching U.S. CS/software ${targetTerms.join(', ')} hybrid/on-site internships`);
   console.log(`Found ${newMatches.length} new listings`);
 
   if (config.dryRun) {
