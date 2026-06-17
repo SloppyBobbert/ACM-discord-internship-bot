@@ -42,6 +42,138 @@ const DEFAULT_SOFTWARE_KEYWORDS = [
   'ai/ml/data'
 ];
 
+const DEFAULT_BEST_COMPANIES = [
+  'Google',
+  'Alphabet',
+  'Apple',
+  'Microsoft',
+  'Amazon',
+  'Meta',
+  'Facebook',
+  'Netflix',
+  'NVIDIA',
+  'OpenAI',
+  'Anthropic',
+  'Tesla',
+  'Stripe',
+  'Databricks',
+  'Snowflake',
+  'Palantir',
+  'Uber',
+  'Airbnb',
+  'DoorDash',
+  'Block',
+  'Square',
+  'Coinbase',
+  'Robinhood',
+  'Jane Street',
+  'Citadel',
+  'Citadel Securities',
+  'Two Sigma',
+  'Hudson River Trading',
+  'Jump Trading',
+  'LinkedIn',
+  'Salesforce',
+  'Adobe',
+  'Oracle',
+  'AMD',
+  'Broadcom',
+  'Intel',
+  'Qualcomm',
+  'Cisco',
+  'Cloudflare',
+  'ServiceNow',
+  'Shopify',
+  'Atlassian',
+  'Figma',
+  'Dropbox',
+  'GitHub',
+  'MongoDB',
+  'Datadog',
+  'CrowdStrike',
+  'Palo Alto Networks',
+  'Zscaler'
+];
+
+const DEFAULT_GOOD_COMPANIES = [
+  'Asana',
+  'Box',
+  'Twilio',
+  'Okta',
+  'Splunk',
+  'Elastic',
+  'HashiCorp',
+  'HubSpot',
+  'Workday',
+  'Intuit',
+  'PayPal',
+  'Pinterest',
+  'Snap',
+  'Reddit',
+  'Roblox',
+  'Spotify',
+  'Discord',
+  'Canva',
+  'Notion',
+  'Airtable',
+  'Grammarly',
+  'Rippling',
+  'Ramp',
+  'Plaid',
+  'Brex',
+  'Chime',
+  'Affirm',
+  'SoFi',
+  'Lyft',
+  'Instacart',
+  'Zipline',
+  'Anduril',
+  'Scale AI',
+  'Cohere',
+  'Perplexity',
+  'Hugging Face',
+  'Vercel',
+  'Netlify',
+  'Linear',
+  'Retool',
+  'Zapier',
+  'Sentry',
+  'GitLab',
+  'Docker',
+  'Confluent',
+  'Cockroach Labs',
+  'PlanetScale',
+  'Supabase',
+  'Vanta',
+  'Verkada',
+  'Samsara',
+  'AppLovin',
+  'Roku',
+  'Yelp',
+  'Zillow',
+  'Expedia',
+  'Wayfair',
+  'Chewy',
+  'Capital One',
+  'JPMorgan Chase',
+  'Goldman Sachs',
+  'Bloomberg',
+  'The Trade Desk',
+  'Indeed',
+  'Workiva',
+  'Epic',
+  'Garmin',
+  'IBM',
+  'Hewlett Packard Enterprise',
+  'HP',
+  'Dell',
+  'Texas Instruments',
+  'Micron',
+  'Lam Research',
+  'ASML',
+  'Arm'
+];
+
 function envBoolean(name, defaultValue = false) {
   const value = process.env[name];
   if (value === undefined) return defaultValue;
@@ -144,6 +276,47 @@ export function isTargetTermListing(raw, targetTerms = DEFAULT_TARGET_TERMS) {
   const normalizedTargets = targetTerms.map((term) => term.toLowerCase());
 
   return listing.terms.some((term) => normalizedTargets.includes(term.toLowerCase()));
+}
+
+function findCompanyIndex(company, companies) {
+  return companies.findIndex((rankedCompany) => keywordMatches(company, rankedCompany.toLowerCase()));
+}
+
+function compareNormalizedDates(a, b) {
+  const dateA = normalizeListing(a).datePosted ?? '';
+  const dateB = normalizeListing(b).datePosted ?? '';
+  return dateB.localeCompare(dateA);
+}
+
+function companyRank(raw, bestCompanies = DEFAULT_BEST_COMPANIES, goodCompanies = DEFAULT_GOOD_COMPANIES) {
+  const company = normalizeListing(raw).company.toLowerCase();
+  const bestIndex = findCompanyIndex(company, bestCompanies);
+  if (bestIndex !== -1) return { tier: 0, index: bestIndex };
+
+  const goodIndex = findCompanyIndex(company, goodCompanies);
+  if (goodIndex !== -1) return { tier: 1, index: goodIndex };
+
+  return { tier: 2, index: Number.MAX_SAFE_INTEGER };
+}
+
+export function sortListingsByRank(listings, options = {}) {
+  const bestCompanies = options.bestCompanies ?? DEFAULT_BEST_COMPANIES;
+  const goodCompanies = options.goodCompanies ?? DEFAULT_GOOD_COMPANIES;
+
+  return [...listings].sort((a, b) => {
+    const rankA = companyRank(a, bestCompanies, goodCompanies);
+    const rankB = companyRank(b, bestCompanies, goodCompanies);
+
+    if (rankA.tier !== rankB.tier) return rankA.tier - rankB.tier;
+    if (rankA.index !== rankB.index) return rankA.index - rankB.index;
+
+    const dateComparison = compareNormalizedDates(a, b);
+    if (dateComparison !== 0) return dateComparison;
+
+    const listingA = normalizeListing(a);
+    const listingB = normalizeListing(b);
+    return listingA.company.localeCompare(listingB.company) || listingA.title.localeCompare(listingB.title);
+  });
 }
 
 function fieldAllowsListing(value) {
@@ -260,7 +433,9 @@ function getConfig() {
     statePath: process.env.STATE_PATH || DEFAULT_STATE_PATH,
     targetTerms: splitConfigList(process.env.TARGET_TERMS, DEFAULT_TARGET_TERMS),
     nonUsTerms: splitConfigList(process.env.NON_US_LOCATION_TERMS, DEFAULT_NON_US_TERMS),
-    softwareKeywords: splitConfigList(process.env.SOFTWARE_KEYWORDS, DEFAULT_SOFTWARE_KEYWORDS)
+    softwareKeywords: splitConfigList(process.env.SOFTWARE_KEYWORDS, DEFAULT_SOFTWARE_KEYWORDS),
+    bestCompanies: splitConfigList(process.env.BEST_COMPANIES, DEFAULT_BEST_COMPANIES),
+    goodCompanies: splitConfigList(process.env.GOOD_COMPANIES, DEFAULT_GOOD_COMPANIES)
   };
 }
 
@@ -295,7 +470,7 @@ export async function run(config = getConfig(), dependencies = {}) {
   const state = await loadState(config.statePath);
   const seen = new Set(state.seen);
   const listings = await fetchListingsForRun(config.listingsUrl);
-  const matches = listings.filter((listing) => listingMatches(listing, config));
+  const matches = sortListingsByRank(listings.filter((listing) => listingMatches(listing, config)), config);
   const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing))).slice(0, config.maxPostsPerRun);
   const firstRun = state.lastRunAt === null;
   const runAt = now().toISOString();

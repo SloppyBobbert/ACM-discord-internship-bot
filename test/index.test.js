@@ -13,7 +13,8 @@ import {
   isUsBasedListing,
   listingMatches,
   normalizeListing,
-  run
+  run,
+  sortListingsByRank
 } from '../src/index.js';
 
 const baseListing = {
@@ -104,6 +105,30 @@ test('builds safe Discord webhook embeds without accidental mentions', () => {
   assert.equal(payload.embeds[0].title, 'Example Co - Software Engineering Intern');
   assert.equal(payload.embeds[0].url, 'https://example.com/apply');
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Source' && field.value === 'SimplifyJobs'), true);
+});
+
+test('sorts listings by best companies, good companies, then newest fallback', () => {
+  const sorted = sortListingsByRank(
+    [
+      { ...baseListing, id: 'unlisted-newer', company_name: 'Local Startup', title: 'Software Intern', date_posted: '2026-06-04' },
+      { ...baseListing, id: 'good', company_name: 'Datadog', title: 'Software Intern', date_posted: '2026-06-01' },
+      { ...baseListing, id: 'unlisted-older', company_name: 'Another Startup', title: 'Software Intern', date_posted: '2026-06-03' },
+      { ...baseListing, id: 'best-second', company_name: 'Apple', title: 'Software Intern', date_posted: '2026-06-02' },
+      { ...baseListing, id: 'best-first', company_name: 'Google', title: 'Software Intern', date_posted: '2026-06-01' }
+    ],
+    {
+      bestCompanies: ['Google', 'Apple'],
+      goodCompanies: ['Datadog']
+    }
+  );
+
+  assert.deepEqual(sorted.map((listing) => listing.id), [
+    'best-first',
+    'best-second',
+    'good',
+    'unlisted-newer',
+    'unlisted-older'
+  ]);
 });
 
 async function withTempState(testBody) {
@@ -231,6 +256,42 @@ test('posting honors MAX_POSTS_PER_RUN and saves only posted listing keys', asyn
     const state = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(posted, ['new-1', 'new-2']);
     assert.deepEqual(state.seen, ['already-seen', 'new-1', 'new-2']);
+  });
+});
+
+test('daily posting cap uses ranked listing order before posting', async () => {
+  await withTempState(async (statePath) => {
+    await writeFile(statePath, `${JSON.stringify({ seen: [], lastRunAt: '2026-06-16T00:00:00.000Z' }, null, 2)}\n`);
+    const posted = [];
+
+    await run(
+      {
+        dryRun: false,
+        webhookUrl: 'https://discord.example/webhook',
+        postOnFirstRun: true,
+        maxPostsPerRun: 3,
+        statePath,
+        nonUsTerms: undefined,
+        softwareKeywords: undefined,
+        targetTerms: undefined,
+        bestCompanies: ['Google', 'Apple'],
+        goodCompanies: ['Datadog']
+      },
+      {
+        fetchListings: async () => [
+          { ...matchingListing('unlisted-newer'), company_name: 'Local Startup', date_posted: '2026-06-04' },
+          { ...matchingListing('good'), company_name: 'Datadog', date_posted: '2026-06-01' },
+          { ...matchingListing('best-second'), company_name: 'Apple', date_posted: '2026-06-02' },
+          { ...matchingListing('best-first'), company_name: 'Google', date_posted: '2026-06-01' }
+        ],
+        postToDiscord: async (listing) => posted.push(listing.id),
+        now: () => new Date('2026-06-17T19:00:00.000Z')
+      }
+    );
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(posted, ['best-first', 'best-second', 'good']);
+    assert.deepEqual(state.seen, ['best-first', 'best-second', 'good']);
   });
 });
 
