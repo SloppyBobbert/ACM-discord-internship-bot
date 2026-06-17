@@ -226,6 +226,42 @@ test('posting honors MAX_POSTS_PER_RUN and saves only posted listing keys', asyn
   });
 });
 
+test('saved state includes successful posts when a later Discord post fails', async () => {
+  await withTempState(async (statePath) => {
+    await writeFile(statePath, `${JSON.stringify({ seen: ['already-seen'], lastRunAt: '2026-06-16T00:00:00.000Z' }, null, 2)}\n`);
+    const posted = [];
+
+    await assert.rejects(
+      run(
+        {
+          dryRun: false,
+          webhookUrl: 'https://discord.example/webhook',
+          postOnFirstRun: true,
+          maxPostsPerRun: 10,
+          statePath,
+          nonUsTerms: undefined,
+          softwareKeywords: undefined,
+          targetTerms: undefined
+        },
+        {
+          fetchListings: async () => [matchingListing('new-1'), matchingListing('new-2')],
+          postToDiscord: async (listing) => {
+            if (listing.id === 'new-2') throw new Error('Discord rejected the post');
+            posted.push(listing.id);
+          },
+          now: () => new Date('2026-06-17T00:00:00.000Z')
+        }
+      ),
+      /Discord rejected the post/
+    );
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(posted, ['new-1']);
+    assert.deepEqual(state.seen, ['already-seen', 'new-1']);
+    assert.equal(state.lastRunAt, '2026-06-17T00:00:00.000Z');
+  });
+});
+
 test('dry run does not post or mutate seen state', async () => {
   await withTempState(async (statePath) => {
     const initialState = { seen: [], lastRunAt: null };

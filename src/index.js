@@ -298,6 +298,7 @@ export async function run(config = getConfig(), dependencies = {}) {
   const matches = listings.filter((listing) => listingMatches(listing, config));
   const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing))).slice(0, config.maxPostsPerRun);
   const firstRun = state.lastRunAt === null;
+  const runAt = now().toISOString();
 
   console.log(`Fetched ${listings.length} listings`);
   console.log(`Found ${matches.length} matching U.S. CS 2027-ready hybrid/on-site internships`);
@@ -310,21 +311,20 @@ export async function run(config = getConfig(), dependencies = {}) {
 
   if (firstRun && !config.postOnFirstRun) {
     const seeded = matches.map(createListingKey);
-    await saveState({ seen: seeded, lastRunAt: now().toISOString() }, config.statePath);
+    await saveState({ seen: seeded, lastRunAt: runAt }, config.statePath);
     console.log('Seeded existing listings');
     return;
   }
 
-  for (const listing of newMatches.map(normalizeListing)) {
+  for (const rawListing of newMatches) {
+    const listing = normalizeListing(rawListing);
     await postListingForRun(listing);
+    seen.add(createListingKey(rawListing));
+    await saveState({ seen: [...seen], lastRunAt: runAt }, config.statePath);
     console.log(`Posted ${listing.company} - ${listing.title}`);
   }
 
-  for (const listing of newMatches) {
-    seen.add(createListingKey(listing));
-  }
-
-  await saveState({ seen: [...seen], lastRunAt: now().toISOString() }, config.statePath);
+  await saveState({ seen: [...seen], lastRunAt: runAt }, config.statePath);
 }
 
 const isCli = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
