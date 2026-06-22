@@ -11,6 +11,8 @@ const DEFAULT_STATE_PATH = 'data/seen.json';
 const SUMMER_2027_TERM = 'summer 2027';
 const DAILY_POST_TIME_LABEL = 'Daily at 3:00 PM PT';
 const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
+const NETWORK_TIMEOUT_MS = 30_000;
+const DISCORD_CONTENT_LIMIT = 2000;
 const MAX_UNLISTED_WHEN_PRIORITY_IS_HIGH = 5;
 const MAX_UNLISTED_WHEN_PRIORITY_IS_LOW = 10;
 
@@ -314,13 +316,52 @@ function formatCompanySection(companyPost, index) {
   return [heading, 'Titles:', ...roleLines].join('\n');
 }
 
+function splitLinesForDiscord(lines) {
+  const chunks = [];
+  let current = '';
+
+  for (const line of lines) {
+    if (line.length > DISCORD_CONTENT_LIMIT) {
+      if (current) {
+        chunks.push(current.trim());
+        current = '';
+      }
+
+      for (let index = 0; index < line.length; index += DISCORD_CONTENT_LIMIT) {
+        chunks.push(line.slice(index, index + DISCORD_CONTENT_LIMIT));
+      }
+      continue;
+    }
+
+    const next = current ? `${current}\n${line}` : line;
+    if (next.length <= DISCORD_CONTENT_LIMIT) {
+      current = next;
+      continue;
+    }
+
+    if (current) chunks.push(current.trim());
+    current = line;
+  }
+
+  if (current) chunks.push(current.trim());
+  return chunks;
+}
+
+function buildPayload(content) {
+  return {
+    username: 'Internship Notifier',
+    allowed_mentions: { parse: [] },
+    content
+  };
+}
+
 export function buildDiscordPayload(companyPosts, options = {}) {
   const posts = Array.isArray(companyPosts) ? companyPosts : [companyPosts];
   const now = options.now ?? new Date();
   const listingCount = posts.reduce((count, companyPost) => count + companyPost.listings.length, 0);
   const sections = posts.map(formatCompanySection);
   const internshipLabel = listingCount === 1 ? 'internship' : 'internships';
-  const content = [
+  const lines = [
     '# Daily 2027 Summer Internship Updates',
     '',
     `**${listingCount} new U.S. CS/software ${internshipLabel} found today**  `,
@@ -329,24 +370,31 @@ export function buildDiscordPayload(companyPosts, options = {}) {
     '',
     '━━━━━━━━━━━━━━━━━━━━',
     '',
-    ...sections.flatMap((section) => [section, '']),
+    ...sections.flatMap((section) => [...section.split('\n'), '']),
     '━━━━━━━━━━━━━━━━━━━━',
     '',
     `Source repo: ${SOURCE_REPO_URL}`,
     '',
     'Simplify 2027 Internship Board:',
     SIMPLIFY_2027_BOARD_URL
-  ].join('\n').trim();
+  ];
 
-  return {
-    username: 'Internship Notifier',
-    allowed_mentions: { parse: [] },
-    content
-  };
+  return splitLinesForDiscord(lines).map(buildPayload);
+}
+
+export async function fetchWithTimeout(url, options = {}, timeoutMs = NETWORK_TIMEOUT_MS, fetchImpl = fetch) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetchImpl(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchListings(url) {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: { accept: 'application/json' }
   });
 
@@ -381,15 +429,19 @@ async function saveState(state, path = DEFAULT_STATE_PATH) {
 }
 
 async function postToDiscord(webhookUrl, companyPosts, options = {}) {
-  const response = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(buildDiscordPayload(companyPosts, options))
-  });
+  const payloads = buildDiscordPayload(companyPosts, options);
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Discord webhook failed: ${response.status} ${body}`);
+  for (const payload of payloads) {
+    const response = await fetchWithTimeout(webhookUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Discord webhook failed: ${response.status} ${body}`);
+    }
   }
 }
 

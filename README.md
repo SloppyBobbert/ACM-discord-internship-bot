@@ -41,7 +41,7 @@ flowchart TD
 
 ## Posting behavior
 
-- First run seeds `data/seen.json` without posting, so the channel does not get spammed with old listings.
+- First run is the exception to the normal save rule: it seeds `data/seen.json` without posting, so the channel does not get spammed with old listings.
 - Later runs post only listings that are not already in `data/seen.json`.
 - Each run sends one daily Discord update titled `Daily 2027 Summer Internship Updates`.
 - The message includes the previous-day date range, the `Daily at 3:00 PM PT` label, numbered company sections, and apply links.
@@ -51,7 +51,7 @@ flowchart TD
 - Best and good companies are not capped.
 - If best + good company posts >= 10, the bot adds up to 5 unlisted company posts.
 - Otherwise, the bot adds up to 10 unlisted company posts.
-- `data/seen.json` is updated only after the daily Discord update posts successfully.
+- After the first run, `data/seen.json` is updated only after the daily Discord update posts successfully.
 
 ## Setup
 

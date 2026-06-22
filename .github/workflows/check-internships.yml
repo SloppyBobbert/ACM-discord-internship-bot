@@ -6,7 +6,7 @@ on:
     - cron: "17 22 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: internship-notifier
@@ -15,16 +15,19 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    outputs:
+      notifier-outcome: ${{ steps.check-listings.outcome }}
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "24"
           cache: npm
@@ -42,8 +45,38 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
-      - name: Commit updated seen state
+      - name: Upload seen state
         if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: seen-state
+          path: data/seen.json
+
+      - name: Fail if notifier failed
+        if: steps.check-listings.outcome == 'failure'
+        run: exit 1
+
+  commit-state:
+    needs: check
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Download seen state
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: seen-state
+          path: data
+
+      - name: Commit updated seen state
         run: |
           if [ -n "$(git status --porcelain data/seen.json)" ]; then
             git config user.name "github-actions[bot]"
@@ -55,7 +88,3 @@ jobs:
           else
             echo "No seen state changes to commit."
           fi
-
-      - name: Fail if notifier failed
-        if: steps.check-listings.outcome == 'failure'
-        run: exit 1

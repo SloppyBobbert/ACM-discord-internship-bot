@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import {
   buildDiscordPayload,
   createListingKey,
+  fetchWithTimeout,
   isHybridOrOnsiteListing,
   isSoftwareInternship,
   isTargetTermListing,
@@ -101,7 +102,7 @@ test('creates stable listing keys by id, then url, then content hash', () => {
 });
 
 test('builds safe daily Discord updates with grouped roles, source repo, and board link', () => {
-  const payload = buildDiscordPayload(
+  const [payload] = buildDiscordPayload(
     [
       {
         company: 'Google',
@@ -143,6 +144,47 @@ test('builds safe daily Discord updates with grouped roles, source repo, and boa
   assert.match(payload.content, /### 3\. \*\*Local Startup\*\*/);
   assert.match(payload.content, /Source repo: https:\/\/github\.com\/SimplifyJobs\/Summer2026-Internships/);
   assert.match(payload.content, /Simplify 2027 Internship Board:\s+https:\/\/simplify\.jobs\/l\/Summer2027-Internships/);
+});
+
+test('splits long Discord updates into payloads below the content limit', () => {
+  const companyPosts = Array.from({ length: 20 }, (_, index) => ({
+    company: `Company ${index}`,
+    tier: index % 2 === 0 ? 'best' : 'good',
+    listings: [
+      normalizeListing({
+        ...baseListing,
+        id: `long-${index}`,
+        company_name: `Company ${index}`,
+        title: `Software Engineering Intern ${index} with a deliberately long title for payload splitting`,
+        url: `https://example.com/apply/${index}/with/a/long/path/that/keeps/the/section/readable`,
+        locations: ['San Francisco, CA', 'New York, NY']
+      })
+    ]
+  }));
+
+  const payloads = buildDiscordPayload(companyPosts, { now: new Date('2026-06-22T22:00:00.000Z') });
+
+  assert.equal(payloads.length > 1, true);
+  assert.equal(payloads.every((payload) => payload.content.length <= 2000), true);
+  assert.match(payloads[0].content, /# Daily 2027 Summer Internship Updates/);
+  assert.match(payloads.at(-1).content, /Simplify 2027 Internship Board/);
+  assert.equal(payloads.every((payload) => payload.allowed_mentions.parse.length === 0), true);
+});
+
+test('fetch helper passes abort signals and rejects timed out network calls', async () => {
+  let receivedSignal;
+  const pendingFetch = async (_url, options) => {
+    receivedSignal = options.signal;
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+  };
+
+  await assert.rejects(
+    fetchWithTimeout('https://example.com/feed.json', { headers: { accept: 'application/json' } }, 5, pendingFetch),
+    /aborted/
+  );
+  assert.equal(receivedSignal.aborted, true);
 });
 
 test('sorts listings by hardcoded priority companies, then newest fallback', () => {
