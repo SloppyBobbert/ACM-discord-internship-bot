@@ -1,10 +1,10 @@
 # Internship Discord Notifier
 
-Simple Node.js bot that checks the SimplifyJobs internship listings once per day and posts new Summer 2027 U.S. CS/software, AI, and data internships to Discord through a webhook.
+Simple Node.js bot that pulls SimplifyJobs internship listings once per day and posts new Summer 2027 U.S. CS/software, AI, and data internships to Discord through a webhook.
 
 Source repo: [SimplifyJobs/Summer2026-Internships](https://github.com/SimplifyJobs/Summer2026-Internships)
 
-The source is still the Summer 2026 listings JSON until a Summer 2027 repo/feed exists. The bot only keeps listings tagged `Summer 2027`.
+Note: The source is still the Summer 2026 listings JSON until a Summer 2027 repo/feed exists. The bot only keeps listings tagged `Summer 2027`.
 
 ## Hardcoded filters
 
@@ -21,7 +21,23 @@ These rules live in `src/index.js`:
 - Priority companies: `BEST_COMPANIES` and `GOOD_COMPANIES`
 - Unlisted company limits: `MAX_UNLISTED_WHEN_PRIORITY_IS_HIGH` and `MAX_UNLISTED_WHEN_PRIORITY_IS_LOW`
 
-No company list, keyword list, target term, or post cap is configured through environment variables anymore. Edit `src/index.js` if those rules need to change.
+Note: Everything is hardcoded, so edit `src/index.js` if you want to change the company list, keyword list, target term, or post cap.
+
+## Structure
+
+```mermaid
+flowchart TD
+  A[GitHub Actions daily schedule] --> B[Run tests]
+  B --> C[Run src/index.js]
+  C --> D[Fetch SimplifyJobs JSON]
+  D --> E[Filter hardcoded Summer 2027 U.S. hybrid/on-site CS/software, AI, and data roles]
+  E --> F[Remove listings already in data/seen.json]
+  F --> G[Rank by BEST_COMPANIES and GOOD_COMPANIES]
+  G --> H[Group roles by company]
+  H --> I[Send one Discord daily update]
+  I --> J[Save data/seen.json]
+  J --> K[Commit updated seen state]
+```
 
 ## Posting behavior
 
@@ -29,11 +45,11 @@ No company list, keyword list, target term, or post cap is configured through en
 - Later runs post only listings that are not already in `data/seen.json`.
 - Each run sends one daily Discord update titled `Daily 2027 Summer Internship Updates`.
 - The message includes the previous-day date range, the `Daily at 3:00 PM PT` label, numbered company sections, and apply links.
-- Best companies use 🔥, good companies use ✨, and unlisted companies have no emoji.
+- Best companies use 🔥, good companies use ✨, and unlisted "mid" companies have no emoji.
 - Multiple roles at the same company are grouped under that company's numbered section.
 - The end of the message links to the source repo and the Simplify 2027 internship board.
 - Best and good companies are not capped.
-- If best + good company posts are 10 or more, the bot adds up to 5 unlisted company posts.
+- If best + good company posts >= 10, the bot adds up to 5 unlisted company posts.
 - Otherwise, the bot adds up to 10 unlisted company posts.
 - `data/seen.json` is updated only after the daily Discord update posts successfully.
 
