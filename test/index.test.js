@@ -100,26 +100,49 @@ test('creates stable listing keys by id, then url, then content hash', () => {
   assert.match(key, /^hash-[a-f0-9]{64}$/);
 });
 
-test('builds safe Discord webhook embeds with grouped company roles and source repo link', () => {
-  const payload = buildDiscordPayload({
-    company: 'Google',
-    listings: [
-      normalizeListing({ ...baseListing, company_name: 'Google', title: 'Software Engineering Intern', url: 'https://example.com/swe' }),
-      normalizeListing({ ...baseListing, company_name: 'Google', title: 'Data Science Intern', url: 'https://example.com/data' })
-    ]
-  });
+test('builds safe daily Discord updates with grouped roles, source repo, and board link', () => {
+  const payload = buildDiscordPayload(
+    [
+      {
+        company: 'Google',
+        tier: 'best',
+        listings: [
+          normalizeListing({ ...baseListing, company_name: 'Google', title: 'Software Engineering Intern', url: 'https://example.com/swe', locations: ['Mountain View, CA'] }),
+          normalizeListing({ ...baseListing, company_name: 'Google', title: 'Data Science Intern', url: 'https://example.com/data', locations: ['San Francisco, CA'] })
+        ]
+      },
+      {
+        company: 'Datadog',
+        tier: 'good',
+        listings: [
+          normalizeListing({ ...baseListing, company_name: 'Datadog', title: 'Software Engineering Intern', url: 'https://example.com/datadog', locations: ['New York, NY'] })
+        ]
+      },
+      {
+        company: 'Local Startup',
+        tier: 'other',
+        listings: [
+          normalizeListing({ ...baseListing, company_name: 'Local Startup', title: 'Backend Engineering Intern', url: 'https://example.com/startup', locations: ['San Francisco, CA'] })
+        ]
+      }
+    ],
+    { now: new Date('2026-06-22T22:00:00.000Z') }
+  );
 
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
   assert.equal(payload.username, 'Internship Notifier');
-  assert.equal(payload.embeds[0].title, 'Google (2 roles)');
-  assert.match(payload.embeds[0].description, /\[Software Engineering Intern\]\(https:\/\/example\.com\/swe\)/);
-  assert.match(payload.embeds[0].description, /\[Data Science Intern\]\(https:\/\/example\.com\/data\)/);
-  assert.equal(
-    payload.embeds[0].fields.some(
-      (field) => field.name === 'Source' && field.value.includes('https://github.com/SimplifyJobs/Summer2026-Internships')
-    ),
-    true
-  );
+  assert.match(payload.content, /# Daily 2027 Summer Internship Updates/);
+  assert.match(payload.content, /\*\*4 new U\.S\. CS\/software internships found today\*\*/);
+  assert.match(payload.content, /June 21 - June 22/);
+  assert.match(payload.content, /Daily at 3:00 PM PT/);
+  assert.match(payload.content, /### 1\. 🔥 \*\*Google\*\*/);
+  assert.match(payload.content, /- Software Engineering Intern — Mountain View, CA — https:\/\/example\.com\/swe/);
+  assert.match(payload.content, /- Data Science Intern — San Francisco, CA — https:\/\/example\.com\/data/);
+  assert.match(payload.content, /### 2\. ✨ \*\*Datadog\*\*/);
+  assert.match(payload.content, /Title: Software Engineering Intern/);
+  assert.match(payload.content, /### 3\. \*\*Local Startup\*\*/);
+  assert.match(payload.content, /Source repo: https:\/\/github\.com\/SimplifyJobs\/Summer2026-Internships/);
+  assert.match(payload.content, /Simplify 2027 Internship Board:\s+https:\/\/simplify\.jobs\/l\/Summer2027-Internships/);
 });
 
 test('sorts listings by hardcoded priority companies, then newest fallback', () => {
@@ -227,7 +250,7 @@ test('second run posts new listings after an empty first run initialized state',
       },
       {
         fetchListings: async () => [],
-        postToDiscord: async (companyPost) => posted.push(companyPost.company),
+        postToDiscord: async (companyPosts) => posted.push(...companyPosts.map((companyPost) => companyPost.company)),
         now: () => new Date('2026-06-17T00:00:00.000Z')
       }
     );
@@ -240,7 +263,7 @@ test('second run posts new listings after an empty first run initialized state',
       },
       {
         fetchListings: async () => [matchingListing('later-1')],
-        postToDiscord: async (companyPost) => posted.push(companyPost.company),
+        postToDiscord: async (companyPosts) => posted.push(...companyPosts.map((companyPost) => companyPost.company)),
         now: () => new Date('2026-06-17T00:30:00.000Z')
       }
     );
@@ -270,13 +293,13 @@ test('posting groups duplicate companies and saves all posted listing keys', asy
           { ...matchingListing('google-2'), company_name: 'Google', title: 'Data Science Intern' },
           { ...matchingListing('apple-1'), company_name: 'Apple', title: 'Software Intern' }
         ],
-        postToDiscord: async (companyPost) => posted.push(`${companyPost.company}(${companyPost.listings.map((listing) => listing.title).join(', ')})`),
+        postToDiscord: async (companyPosts) => posted.push(companyPosts.map((companyPost) => `${companyPost.company}(${companyPost.listings.map((listing) => listing.title).join(', ')})`)),
         now: () => new Date('2026-06-17T00:00:00.000Z')
       }
     );
 
     const state = JSON.parse(await readFile(statePath, 'utf8'));
-    assert.deepEqual(posted, ['Google(Data Science Intern, Software Engineering Intern)', 'Apple(Software Intern)']);
+    assert.deepEqual(posted, [['Google(Data Science Intern, Software Engineering Intern)', 'Apple(Software Intern)']]);
     assert.deepEqual(state.seen, ['already-seen', 'google-2', 'google-1', 'apple-1']);
   });
 });
@@ -299,7 +322,7 @@ test('daily company post selection uses ranked grouped order before posting', as
           { ...matchingListing('best-second'), company_name: 'Apple', date_posted: '2026-06-02' },
           { ...matchingListing('best-first'), company_name: 'Google', date_posted: '2026-06-01' }
         ],
-        postToDiscord: async (companyPost) => posted.push(companyPost.company),
+        postToDiscord: async (companyPosts) => posted.push(...companyPosts.map((companyPost) => companyPost.company)),
         now: () => new Date('2026-06-17T19:00:00.000Z')
       }
     );
@@ -310,10 +333,9 @@ test('daily company post selection uses ranked grouped order before posting', as
   });
 });
 
-test('saved state includes successful company posts when a later Discord post fails', async () => {
+test('state is not updated when the daily Discord update fails', async () => {
   await withTempState(async (statePath) => {
     await writeFile(statePath, `${JSON.stringify({ seen: ['already-seen'], lastRunAt: '2026-06-16T00:00:00.000Z' }, null, 2)}\n`);
-    const posted = [];
 
     await assert.rejects(
       run(
@@ -327,9 +349,8 @@ test('saved state includes successful company posts when a later Discord post fa
             { ...matchingListing('new-1'), company_name: 'Google' },
             { ...matchingListing('new-2'), company_name: 'Local Startup' }
           ],
-          postToDiscord: async (companyPost) => {
-            if (companyPost.company === 'Local Startup') throw new Error('Discord rejected the post');
-            posted.push(...companyPost.listings.map((listing) => listing.id));
+          postToDiscord: async () => {
+            throw new Error('Discord rejected the post');
           },
           now: () => new Date('2026-06-17T00:00:00.000Z')
         }
@@ -338,9 +359,8 @@ test('saved state includes successful company posts when a later Discord post fa
     );
 
     const state = JSON.parse(await readFile(statePath, 'utf8'));
-    assert.deepEqual(posted, ['new-1']);
-    assert.deepEqual(state.seen, ['already-seen', 'new-1']);
-    assert.equal(state.lastRunAt, '2026-06-17T00:00:00.000Z');
+    assert.deepEqual(state.seen, ['already-seen']);
+    assert.equal(state.lastRunAt, '2026-06-16T00:00:00.000Z');
   });
 });
 

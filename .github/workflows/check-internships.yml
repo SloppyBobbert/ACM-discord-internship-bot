@@ -3,7 +3,7 @@ name: Check internships
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 19 * * *"
+    - cron: "17 22 * * *"
 
 permissions:
   contents: write

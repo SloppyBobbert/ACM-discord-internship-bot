@@ -11,8 +11,10 @@ The source is still the Summer 2026 listings JSON until a Summer 2027 repo/feed 
 These rules live in `src/index.js`:
 
 - Source JSON: `DEFAULT_LISTINGS_URL`
+- Simplify board link: `SIMPLIFY_2027_BOARD_URL`
 - State file: `DEFAULT_STATE_PATH` (`data/seen.json`)
 - Target term: `SUMMER_2027_TERM`
+- Discord schedule label: `DAILY_POST_TIME_LABEL`
 - U.S. location rule: `US_STATE_LOCATION` plus `country` values matching `USA` or `America`
 - Remote filter: `isHybridOrOnsiteListing()` rejects locations containing `remote`
 - Title keywords: `SOFTWARE_KEYWORDS`
@@ -25,11 +27,15 @@ No company list, keyword list, target term, or post cap is configured through en
 
 - First run seeds `data/seen.json` without posting, so the channel does not get spammed with old listings.
 - Later runs post only listings that are not already in `data/seen.json`.
-- Multiple roles at the same company are grouped into one Discord post. The embed title is like `Google (2 roles)`, and the role titles are listed in the embed body.
+- Each run sends one daily Discord update titled `Daily 2027 Summer Internship Updates`.
+- The message includes the previous-day date range, the `Daily at 3:00 PM PT` label, numbered company sections, and apply links.
+- Best companies use 🔥, good companies use ✨, and unlisted companies have no emoji.
+- Multiple roles at the same company are grouped under that company's numbered section.
+- The end of the message links to the source repo and the Simplify 2027 internship board.
 - Best and good companies are not capped.
 - If best + good company posts are 10 or more, the bot adds up to 5 unlisted company posts.
 - Otherwise, the bot adds up to 10 unlisted company posts.
-- Every successful company post is saved immediately so retries do not repost it if a later Discord post fails.
+- `data/seen.json` is updated only after the daily Discord update posts successfully.
 
 ## Setup
 
@@ -75,4 +81,4 @@ npm test
 
 ## GitHub Actions
 
-The workflow in `.github/workflows/check-internships.yml` runs manually or once per day at 19:17 UTC, shortly after noon Pacific during daylight saving time. It runs tests, checks listings, posts grouped Discord messages, and commits `data/seen.json` so duplicate listings are not posted.
+The workflow in `.github/workflows/check-internships.yml` runs manually or once per day at 22:17 UTC, shortly after 3:00 PM Pacific during daylight saving time. It runs tests, checks listings, posts the daily Discord message, and commits `data/seen.json` so duplicate listings are not posted.

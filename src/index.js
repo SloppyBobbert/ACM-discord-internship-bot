@@ -4,10 +4,13 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SOURCE_REPO_URL = 'https://github.com/SimplifyJobs/Summer2026-Internships';
+const SIMPLIFY_2027_BOARD_URL = 'https://simplify.jobs/l/Summer2027-Internships';
 const DEFAULT_LISTINGS_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json';
 const DEFAULT_STATE_PATH = 'data/seen.json';
 
 const SUMMER_2027_TERM = 'summer 2027';
+const DAILY_POST_TIME_LABEL = 'Daily at 3:00 PM PT';
+const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
 const MAX_UNLISTED_WHEN_PRIORITY_IS_HIGH = 5;
 const MAX_UNLISTED_WHEN_PRIORITY_IS_LOW = 10;
 
@@ -270,23 +273,75 @@ export function selectCompanyGroups(groups) {
   return [...priorityGroups, ...unlistedGroups.slice(0, unlistedLimit)];
 }
 
-export function buildDiscordPayload(companyPost) {
+function tierIcon(tier) {
+  if (tier === 'best') return '🔥 ';
+  if (tier === 'good') return '✨ ';
+  return '';
+}
+
+function formatPacificDate(date) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    timeZone: PACIFIC_TIME_ZONE
+  }).format(date);
+}
+
+function formatDateRange(now) {
+  const end = new Date(now);
+  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+  return `${formatPacificDate(start)} - ${formatPacificDate(end)}`;
+}
+
+function formatCompanySection(companyPost, index) {
+  const heading = `### ${index + 1}. ${tierIcon(companyPost.tier)}**${companyPost.company}**`;
+
+  if (companyPost.listings.length === 1) {
+    const listing = companyPost.listings[0];
+    return [
+      heading,
+      `Title: ${listing.title}`,
+      `Location: ${listing.locations.join(', ') || 'Unknown location'}`,
+      `Apply: ${listing.url}`
+    ].join('\n');
+  }
+
   const roleLines = companyPost.listings.map((listing) => {
     const locations = listing.locations.join(', ') || 'Unknown location';
-    return `- [${listing.title}](${listing.url}) — ${locations}`;
+    return `- ${listing.title} — ${locations} — ${listing.url}`;
   });
-  const roleCount = companyPost.listings.length;
+
+  return [heading, 'Titles:', ...roleLines].join('\n');
+}
+
+export function buildDiscordPayload(companyPosts, options = {}) {
+  const posts = Array.isArray(companyPosts) ? companyPosts : [companyPosts];
+  const now = options.now ?? new Date();
+  const listingCount = posts.reduce((count, companyPost) => count + companyPost.listings.length, 0);
+  const sections = posts.map(formatCompanySection);
+  const internshipLabel = listingCount === 1 ? 'internship' : 'internships';
+  const content = [
+    '# Daily 2027 Summer Internship Updates',
+    '',
+    `**${listingCount} new U.S. CS/software ${internshipLabel} found today**  `,
+    formatDateRange(now),
+    DAILY_POST_TIME_LABEL,
+    '',
+    '━━━━━━━━━━━━━━━━━━━━',
+    '',
+    ...sections.flatMap((section) => [section, '']),
+    '━━━━━━━━━━━━━━━━━━━━',
+    '',
+    `Source repo: ${SOURCE_REPO_URL}`,
+    '',
+    'Simplify 2027 Internship Board:',
+    SIMPLIFY_2027_BOARD_URL
+  ].join('\n').trim();
 
   return {
     username: 'Internship Notifier',
     allowed_mentions: { parse: [] },
-    embeds: [
-      {
-        title: `${companyPost.company} (${roleCount} role${roleCount === 1 ? '' : 's'})`.slice(0, 256),
-        description: roleLines.join('\n').slice(0, 4096),
-        fields: [{ name: 'Source', value: `[SimplifyJobs internship repo](${SOURCE_REPO_URL})`, inline: false }]
-      }
-    ]
+    content
   };
 }
 
@@ -325,11 +380,11 @@ async function saveState(state, path = DEFAULT_STATE_PATH) {
   await writeFile(path, body);
 }
 
-async function postToDiscord(webhookUrl, companyPost) {
+async function postToDiscord(webhookUrl, companyPosts, options = {}) {
   const response = await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(buildDiscordPayload(companyPost))
+    body: JSON.stringify(buildDiscordPayload(companyPosts, options))
   });
 
   if (!response.ok) {
@@ -353,9 +408,9 @@ export async function run(config = getConfig(), dependencies = {}) {
   }
 
   const fetchListingsForRun = dependencies.fetchListings ?? fetchListings;
-  const postCompanyForRun = dependencies.postToDiscord
-    ? (companyPost) => dependencies.postToDiscord(companyPost)
-    : (companyPost) => postToDiscord(config.webhookUrl, companyPost);
+  const postDailyUpdateForRun = dependencies.postToDiscord
+    ? (companyPosts, options) => dependencies.postToDiscord(companyPosts, options)
+    : (companyPosts, options) => postToDiscord(config.webhookUrl, companyPosts, options);
   const now = dependencies.now ?? (() => new Date());
   const listingsUrl = config.listingsUrl || DEFAULT_LISTINGS_URL;
   const statePath = config.statePath || DEFAULT_STATE_PATH;
@@ -367,7 +422,8 @@ export async function run(config = getConfig(), dependencies = {}) {
   const newMatches = matches.filter((listing) => !seen.has(createListingKey(listing)));
   const companyPosts = selectCompanyGroups(groupListingsByCompany(newMatches));
   const firstRun = state.lastRunAt === null;
-  const runAt = now().toISOString();
+  const currentRun = now();
+  const runAt = currentRun.toISOString();
 
   console.log(`Fetched ${listings.length} listings`);
   console.log('Found %d matching U.S. Summer 2027 hybrid/on-site CS/software, AI, or data internships', matches.length);
@@ -384,15 +440,18 @@ export async function run(config = getConfig(), dependencies = {}) {
     return;
   }
 
-  for (const companyPost of companyPosts) {
-    await postCompanyForRun(companyPost);
+  if (companyPosts.length > 0) {
+    await postDailyUpdateForRun(companyPosts, { now: currentRun });
+  }
 
+  for (const companyPost of companyPosts) {
     for (const listing of companyPost.listings) {
       seen.add(createListingKey(listing));
     }
+  }
 
-    await saveState({ seen: [...seen], lastRunAt: runAt }, statePath);
-    console.log(`Posted ${companyPost.company} (${companyPost.listings.map((listing) => listing.title).join(', ')})`);
+  if (companyPosts.length > 0) {
+    console.log(`Posted daily update with ${newMatches.length} listings in ${companyPosts.length} company sections`);
   }
 
   await saveState({ seen: [...seen], lastRunAt: runAt }, statePath);
