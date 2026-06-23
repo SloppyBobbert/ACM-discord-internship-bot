@@ -15,7 +15,7 @@ These rules live in `src/index.js`:
 - State file: `DEFAULT_STATE_PATH` (`data/seen.json`)
 - Target term: `SUMMER_2027_TERM`
 - Discord schedule label: `DAILY_POST_TIME_LABEL`
-- U.S. location rule: `US_STATE_LOCATION` plus `country` values matching `USA` or `America`
+- U.S. location rule: `US_STATE_LOCATION` plus standard `country` values such as `US`, `USA`, `United States`, or `America`
 - Remote filter: `isHybridOrOnsiteListing()` rejects locations containing `remote`
 - Title keywords: `SOFTWARE_KEYWORDS`
 - Priority companies: `BEST_COMPANIES` and `GOOD_COMPANIES`

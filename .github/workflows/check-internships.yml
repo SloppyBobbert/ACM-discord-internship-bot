@@ -58,7 +58,7 @@ jobs:
 
   commit-state:
     needs: check
-    if: always()
+    if: success()
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -69,6 +69,7 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download seen state
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -77,14 +78,17 @@ jobs:
           path: data
 
       - name: Commit updated seen state
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "$(git status --porcelain data/seen.json)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add data/seen.json
             git commit -m "Update seen internship listings"
-            git pull --rebase origin "$GITHUB_REF_NAME"
-            git push origin "HEAD:$GITHUB_REF_NAME"
+            authenticated_remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git pull --rebase "$authenticated_remote" "$GITHUB_REF_NAME"
+            git push "$authenticated_remote" "HEAD:$GITHUB_REF_NAME"
           else
             echo "No seen state changes to commit."
           fi

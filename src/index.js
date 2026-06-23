@@ -13,6 +13,9 @@ const DAILY_POST_TIME_LABEL = 'Daily at 3:00 PM PT';
 const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
 const NETWORK_TIMEOUT_MS = 30_000;
 const DISCORD_CONTENT_LIMIT = 2000;
+const DATE_TIMESTAMP_LIMIT_MS = 8_640_000_000_000_000;
+const MAX_DISCORD_RATE_LIMIT_RETRIES = 3;
+const DEFAULT_RATE_LIMIT_DELAY_MS = 1_000;
 const MAX_UNLISTED_WHEN_PRIORITY_IS_HIGH = 5;
 const MAX_UNLISTED_WHEN_PRIORITY_IS_LOW = 10;
 
@@ -20,6 +23,8 @@ const US_STATES = 'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|M
 const US_STATE_LOCATION = new RegExp(`\\b[A-Z][A-Za-z .'-]+,\\s*(${US_STATES})\\b`);
 
 const SOFTWARE_KEYWORDS = [
+  'cs',
+  'computer science',
   'software',
   'swe',
   'developer',
@@ -118,8 +123,16 @@ function normalizeDate(value) {
   if (!value) return undefined;
 
   if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return undefined;
+
     const milliseconds = value > 10_000_000_000 ? value : value * 1000;
-    return new Date(milliseconds).toISOString().slice(0, 10);
+    if (!Number.isFinite(milliseconds) || milliseconds <= 0 || Math.abs(milliseconds) > DATE_TIMESTAMP_LIMIT_MS) {
+      return undefined;
+    }
+
+    const parsed = new Date(milliseconds);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return parsed.toISOString().slice(0, 10);
   }
 
   const parsed = new Date(value);
@@ -150,14 +163,14 @@ export function normalizeListing(raw = {}) {
 }
 
 function isUsCountry(value) {
-  return /\b(usa|america)\b/i.test(value);
+  const normalized = String(value).trim().toLowerCase().replace(/\./g, '');
+  return ['us', 'usa', 'america', 'united states', 'united states of america'].includes(normalized);
 }
 
 export function isUsBasedListing(raw) {
   const listing = normalizeListing(raw);
-  if (listing.countries.length > 0) return listing.countries.some(isUsCountry);
-
-  return listing.locations.some((location) => US_STATE_LOCATION.test(location) || isUsCountry(location));
+  const hasUsLocation = listing.locations.some((location) => US_STATE_LOCATION.test(location) || isUsCountry(location));
+  return hasUsLocation || listing.countries.some(isUsCountry);
 }
 
 export function isHybridOrOnsiteListing(raw) {
@@ -428,20 +441,48 @@ async function saveState(state, path = DEFAULT_STATE_PATH) {
   await writeFile(path, body);
 }
 
-async function postToDiscord(webhookUrl, companyPosts, options = {}) {
-  const payloads = buildDiscordPayload(companyPosts, options);
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
-  for (const payload of payloads) {
+function retryAfterDelayMs(response, attempt) {
+  const retryAfter = response.headers?.get?.('retry-after');
+
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+
+    const retryAt = Date.parse(retryAfter);
+    if (!Number.isNaN(retryAt)) return Math.max(0, retryAt - Date.now());
+  }
+
+  return DEFAULT_RATE_LIMIT_DELAY_MS * 2 ** attempt;
+}
+
+async function postPayloadToDiscord(webhookUrl, payload) {
+  for (let attempt = 0; attempt <= MAX_DISCORD_RATE_LIMIT_RETRIES; attempt += 1) {
     const response = await fetchWithTimeout(webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Discord webhook failed: ${response.status} ${body}`);
+    if (response.ok) return;
+
+    if (response.status === 429 && attempt < MAX_DISCORD_RATE_LIMIT_RETRIES) {
+      await wait(retryAfterDelayMs(response, attempt));
+      continue;
     }
+
+    const body = await response.text();
+    throw new Error(`Discord webhook failed: ${response.status} ${body}`);
+  }
+}
+
+export async function postToDiscord(webhookUrl, companyPosts, options = {}) {
+  const payloads = buildDiscordPayload(companyPosts, options);
+  for (const payload of payloads) {
+    await postPayloadToDiscord(webhookUrl, payload);
   }
 }
 

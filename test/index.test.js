@@ -14,6 +14,7 @@ import {
   isUsBasedListing,
   listingMatches,
   normalizeListing,
+  postToDiscord,
   run,
   selectCompanyGroups,
   sortListingsForPosting
@@ -47,17 +48,28 @@ test('normalizes the current SimplifyJobs listing shape defensively', () => {
   assert.equal(normalized.datePosted, '2025-10-20');
 });
 
-test('accepts only USA/America country or U.S. city/state locations', () => {
+test('normalizes malformed numeric timestamps without throwing', () => {
+  const normalized = normalizeListing({
+    ...baseListing,
+    date_posted: Number.MAX_VALUE
+  });
+
+  assert.equal(normalized.datePosted, undefined);
+});
+
+test('accepts standard U.S. country values or U.S. city/state locations', () => {
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Seattle, WA'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Austin, TX'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, country: 'USA' }), true);
   assert.equal(isUsBasedListing({ ...baseListing, country: 'America' }), true);
+  assert.equal(isUsBasedListing({ ...baseListing, country: 'United States' }), true);
+  assert.equal(isUsBasedListing({ ...baseListing, country: 'Canada', locations: ['Seattle, WA'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Milwaukee, WI'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Indianapolis, IN'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Tukwila, WA'] }), true);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['Toronto, Canada'] }), false);
   assert.equal(isUsBasedListing({ ...baseListing, locations: ['London, UK'] }), false);
-  assert.equal(isUsBasedListing({ ...baseListing, country: 'Canada' }), false);
+  assert.equal(isUsBasedListing({ ...baseListing, country: 'Canada', locations: ['Toronto, Canada'] }), false);
 });
 
 test('rejects remote-only roles and accepts on-site or hybrid locations', () => {
@@ -70,6 +82,8 @@ test('rejects remote-only roles and accepts on-site or hybrid locations', () => 
 
 test('accepts software internships and rejects unrelated internships', () => {
   assert.equal(isSoftwareInternship(baseListing), true);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'CS Intern' }), true);
+  assert.equal(isSoftwareInternship({ ...baseListing, title: 'Computer Science Intern' }), true);
   assert.equal(isSoftwareInternship({ ...baseListing, title: 'Product Manager Intern' }), false);
   assert.equal(isSoftwareInternship({ ...baseListing, title: 'Tax Technology Intern' }), false);
   assert.equal(isSoftwareInternship({ ...baseListing, title: 'Electricity + Natural Gas Analyst Intern' }), false);
@@ -185,6 +199,45 @@ test('fetch helper passes abort signals and rejects timed out network calls', as
     /aborted/
   );
   assert.equal(receivedSignal.aborted, true);
+});
+
+test('retries Discord webhook payloads after rate limits', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(options.body));
+
+    if (calls.length === 1) {
+      return {
+        ok: false,
+        status: 429,
+        headers: { get: (name) => (name.toLowerCase() === 'retry-after' ? '0' : null) },
+        text: async () => 'rate limited'
+      };
+    }
+
+    return {
+      ok: true,
+      status: 204,
+      headers: { get: () => null },
+      text: async () => ''
+    };
+  };
+
+  try {
+    await postToDiscord('https://discord.example/webhook', [
+      {
+        company: 'Google',
+        tier: 'best',
+        listings: [normalizeListing({ ...baseListing, company_name: 'Google' })]
+      }
+    ], { now: new Date('2026-06-22T22:00:00.000Z') });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(calls.length, 2);
 });
 
 test('sorts listings by hardcoded priority companies, then newest fallback', () => {
