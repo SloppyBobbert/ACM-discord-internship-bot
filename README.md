@@ -62,9 +62,9 @@ Title: Software Intern
 Location: New York, NY  
 Apply: https://example.com/datadog-software
 
-### 4. **Lovense**
+### 3. ✨ **Lovense**
 Title: Backend Penetration Testing Intern  
-Location: Gary, IN
+Location: Gary, IN  
 Apply: https://example.com/lovense
 
 ━━━━━━━━━━━━━━━━━━━━
