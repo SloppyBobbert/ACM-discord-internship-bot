@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SOURCE_REPO_URL = 'https://github.com/SimplifyJobs/Summer2026-Internships';
+const BOT_REPO_URL = 'https://github.com/SloppyBobbert/ACM-discord-internship-bot';
 const SIMPLIFY_2027_BOARD_URL = 'https://simplify.jobs/l/Summer2027-Internships';
 const DEFAULT_LISTINGS_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json';
 const DEFAULT_STATE_PATH = 'data/seen.json';
@@ -386,7 +386,7 @@ export function buildDiscordPayload(companyPosts, options = {}) {
     ...sections.flatMap((section) => [...section.split('\n'), '']),
     '━━━━━━━━━━━━━━━━━━━━',
     '',
-    `Source repo: ${SOURCE_REPO_URL}`,
+    `Bot repo: ${BOT_REPO_URL}`,
     '',
     'Simplify 2027 Internship Board:',
     SIMPLIFY_2027_BOARD_URL

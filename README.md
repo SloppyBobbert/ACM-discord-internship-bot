@@ -11,6 +11,7 @@ Note: The source is still the Summer 2026 listings JSON until a Summer 2027 repo
 Hardcoded rules in `src/index.js`:
 
 - Source JSON: `DEFAULT_LISTINGS_URL`
+- Bot repo link: `BOT_REPO_URL`
 - Simplify board link: `SIMPLIFY_2027_BOARD_URL`
 - State file: `DEFAULT_STATE_PATH` (`data/seen.json`)
 - Target term: `SUMMER_2027_TERM`
@@ -31,7 +32,7 @@ Note: Everything is hardcoded, so edit `src/index.js` if you want to change the 
 - The message includes the previous-day date range, the `Daily at 3:00 PM PT` label, numbered company sections, and apply links.
 - Best companies use 🔥, good companies use ✨, and unlisted "mid" companies have no emoji.
 - Multiple roles at the same company are grouped under that company's numbered section.
-- The end of the message links to the source repo and the Simplify 2027 internship board.
+- The end of the message links to the bot repo and the Simplify 2027 internship board.
 - Best and good companies are not capped.
 - If best + good company posts >= 10, the bot adds up to 5 unlisted company posts.
 - Otherwise, the bot adds up to 10 unlisted company posts.
