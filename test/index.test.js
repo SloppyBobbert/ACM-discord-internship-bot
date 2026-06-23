@@ -115,7 +115,7 @@ test('creates stable listing keys by id, then url, then content hash', () => {
   assert.match(key, /^hash-[a-f0-9]{64}$/);
 });
 
-test('builds safe daily Discord updates with grouped roles, source repo, and board link', () => {
+test('builds safe daily Discord updates with grouped roles, bot repo, and board link', () => {
   const [payload] = buildDiscordPayload(
     [
       {
@@ -156,7 +156,7 @@ test('builds safe daily Discord updates with grouped roles, source repo, and boa
   assert.match(payload.content, /### 2\. ✨ \*\*Datadog\*\*/);
   assert.match(payload.content, /Title: Software Engineering Intern/);
   assert.match(payload.content, /### 3\. \*\*Local Startup\*\*/);
-  assert.match(payload.content, /Source repo: https:\/\/github\.com\/SimplifyJobs\/Summer2026-Internships/);
+  assert.match(payload.content, /Bot repo: https:\/\/github\.com\/SloppyBobbert\/ACM-discord-internship-bot/);
   assert.match(payload.content, /Simplify 2027 Internship Board:\s+https:\/\/simplify\.jobs\/l\/Summer2027-Internships/);
 });
 
