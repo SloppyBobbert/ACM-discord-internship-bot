@@ -1,6 +1,6 @@
 # LawJob Listings
 
-Vibecoded Discord Node.js bot that scrapes SimplifyJobs internship listings and compiles a daily server notification for Summer 2027 U.S. CS internships. Made for the five active people in the Chico ACM Discord.
+Lowk [vibecoded](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ5jRY7cs5l49H2ciKtpcdGy30kxu4qzY29nw&s) Discord Node.js bot that scrapes SimplifyJobs internship listings and compiles a daily server notification for Summer 2027 U.S. CS internships. Made for the five active people in the Chico ACM Discord.
 
 Source repo: [SimplifyJobs/Summer2026-Internships](https://github.com/SimplifyJobs/Summer2026-Internships)
 
@@ -37,9 +37,9 @@ Note: Everything is hardcoded, so edit `src/index.js` if you want to change the 
 - Otherwise, the bot adds up to 10 unlisted company posts.
 - After the first run, `data/seen.json` is updated only after the daily Discord update posts successfully.
 
-## Example
+# Sample
 
-# Daily 2027 Summer Internship Updates
+## Daily 2027 Summer Internship Updates
 
 **7 new U.S. CS/software internships found today**  
 June 21 - June 22  
