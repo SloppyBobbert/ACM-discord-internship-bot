@@ -1,6 +1,6 @@
-# Internship Discord Notifier
+# LawJob Listings
 
-Simple Node.js bot that pulls SimplifyJobs internship listings once per day and posts new Summer 2027 U.S. CS/software, AI, and data internships to Discord through a webhook.
+Vibecoded Discord Node.js bot that scrapes SimplifyJobs internship listings and compiles a daily server notification for Summer 2027 U.S. CS internships. Made for the five active people in the Chico ACM Discord.
 
 Source repo: [SimplifyJobs/Summer2026-Internships](https://github.com/SimplifyJobs/Summer2026-Internships)
 
@@ -8,7 +8,7 @@ Note: The source is still the Summer 2026 listings JSON until a Summer 2027 repo
 
 ## Hardcoded filters
 
-These rules live in `src/index.js`:
+Hardcoded rules in `src/index.js`:
 
 - Source JSON: `DEFAULT_LISTINGS_URL`
 - Simplify board link: `SIMPLIFY_2027_BOARD_URL`
@@ -23,22 +23,6 @@ These rules live in `src/index.js`:
 
 Note: Everything is hardcoded, so edit `src/index.js` if you want to change the company list, keyword list, target term, or post cap.
 
-## Structure
-
-```mermaid
-flowchart TD
-  A[GitHub Actions daily schedule] --> B[Run tests]
-  B --> C[Run src/index.js]
-  C --> D[Fetch SimplifyJobs JSON]
-  D --> E[Filter hardcoded Summer 2027 U.S. hybrid/on-site CS/software, AI, and data roles]
-  E --> F[Remove listings already in data/seen.json]
-  F --> G[Rank by BEST_COMPANIES and GOOD_COMPANIES]
-  G --> H[Group roles by company]
-  H --> I[Send one Discord daily update]
-  I --> J[Save data/seen.json]
-  J --> K[Commit updated seen state]
-```
-
 ## Posting behavior
 
 - First run is the exception to the normal save rule: it seeds `data/seen.json` without posting, so the channel does not get spammed with old listings.
@@ -52,6 +36,43 @@ flowchart TD
 - If best + good company posts >= 10, the bot adds up to 5 unlisted company posts.
 - Otherwise, the bot adds up to 10 unlisted company posts.
 - After the first run, `data/seen.json` is updated only after the daily Discord update posts successfully.
+
+## Example
+
+# Daily 2027 Summer Internship Updates
+
+**7 new U.S. CS/software internships found today**  
+June 21 - June 22  
+Daily at 3:00 PM PT
+
+━━━━━━━━━━━━━━━━━━━━
+
+### 1. 🔥 **Google**
+Titles:
+- Software Engineering Intern — Mountain View, CA — https://example.com/google-swe
+- Data Science Intern — San Francisco, CA — https://example.com/google-data
+
+### 2. 🔥 **Apple**
+Title: Software Engineering Intern  
+Location: Cupertino, CA  
+Apply: https://example.com/apple-swe
+
+### 3. ✨ **Datadog**
+Title: Software Intern  
+Location: New York, NY  
+Apply: https://example.com/datadog-software
+
+### 4. **Lovense**
+Title: Backend Penetration Testing Intern  
+Location: Gary, IN
+Apply: https://example.com/lovense
+
+━━━━━━━━━━━━━━━━━━━━
+
+Source repo: https://github.com/SimplifyJobs/Summer2026-Internships
+
+Simplify 2027 Internship Board:  
+https://simplify.jobs/l/Summer2027-Internships
 
 ## Setup
 
@@ -87,6 +108,22 @@ Run tests:
 npm test
 ```
 
+## Structure
+
+```mermaid
+flowchart TD
+  A[GitHub Actions daily schedule] --> B[Run tests]
+  B --> C[Run src/index.js]
+  C --> D[Fetch SimplifyJobs JSON]
+  D --> E[Filter hardcoded Summer 2027 U.S. hybrid/on-site CS/software, AI, and data roles]
+  E --> F[Remove listings already in data/seen.json]
+  F --> G[Rank by BEST_COMPANIES and GOOD_COMPANIES]
+  G --> H[Group roles by company]
+  H --> I[Send one Discord daily update]
+  I --> J[Save data/seen.json]
+  J --> K[Commit updated seen state]
+```
+
 ## Environment variables
 
 | Name | Default | Notes |
@@ -97,4 +134,4 @@ npm test
 
 ## GitHub Actions
 
-The workflow in `.github/workflows/check-internships.yml` runs manually or once per day at 22:17 UTC, shortly after 3:00 PM Pacific during daylight saving time. It runs tests, checks listings, posts the daily Discord message, and commits `data/seen.json` so duplicate listings are not posted.
+The workflow in `.github/workflows/check-internships.yml` runs manually or once per day at 3:00 PM PSt (22:17 UTC). It runs tests, checks listings, posts the daily Discord message, and commits `data/seen.json` so duplicate listings aren't posted.
