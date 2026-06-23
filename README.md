@@ -37,7 +37,7 @@ Note: Everything is hardcoded, so edit `src/index.js` if you want to change the 
 - Otherwise, the bot adds up to 10 unlisted company posts.
 - After the first run, `data/seen.json` is updated only after the daily Discord update posts successfully.
 
-# Sample
+## Sample
 
 ## Daily 2027 Summer Internship Updates
 
@@ -73,6 +73,10 @@ Source repo: https://github.com/SimplifyJobs/Summer2026-Internships
 
 Simplify 2027 Internship Board:  
 https://simplify.jobs/l/Summer2027-Internships
+
+## Contributing
+
+I'm too lazy to expand the hardcoded `BEST_COMPANIES` and `GOOD_COMPANIES` so once you get hired, please go ahead and add your company to the list if it's not there.
 
 ## Setup
 
