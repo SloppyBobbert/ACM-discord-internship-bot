@@ -1,0 +1,94 @@
+name: Check internships
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 22 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internship-notifier
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      notifier-outcome: ${{ steps.check-listings.outcome }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check internship listings
+        id: check-listings
+        continue-on-error: true
+        run: node src/index.js
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Upload seen state
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: seen-state
+          path: data/seen.json
+
+      - name: Fail if notifier failed
+        if: steps.check-listings.outcome == 'failure'
+        run: exit 1
+
+  commit-state:
+    needs: check
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download seen state
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: seen-state
+          path: data
+
+      - name: Commit updated seen state
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "$(git status --porcelain data/seen.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/seen.json
+            git commit -m "Update seen internship listings"
+            authenticated_remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git pull --rebase "$authenticated_remote" "$GITHUB_REF_NAME"
+            git push "$authenticated_remote" "HEAD:$GITHUB_REF_NAME"
+          else
+            echo "No seen state changes to commit."
+          fi
