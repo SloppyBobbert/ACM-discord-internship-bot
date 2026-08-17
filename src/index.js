@@ -3,12 +3,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const BOT_REPO_URL = 'https://github.com/SloppyBobbert/ACM-discord-internship-bot';
-const SIMPLIFY_2027_BOARD_URL = 'https://simplify.jobs/l/Summer2027-Internships';
-const DEFAULT_LISTINGS_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json';
+const DEFAULT_LISTINGS_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json';
 const DEFAULT_STATE_PATH = 'data/seen.json';
 
-const SUMMER_2027_TERM = 'summer 2027';
+const TARGET_2027_TERMS = new Set(['winter 2027', 'spring 2027', 'summer 2027']);
 const DAILY_POST_TIME_LABEL = 'Daily at 3:00 PM PT';
 const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
 const NETWORK_TIMEOUT_MS = 30_000;
@@ -191,7 +189,7 @@ export function isSoftwareInternship(raw) {
 
 export function isTargetTermListing(raw) {
   const listing = normalizeListing(raw);
-  return listing.terms.some((term) => term.toLowerCase() === SUMMER_2027_TERM);
+  return listing.terms.some((term) => TARGET_2027_TERMS.has(term.trim().toLowerCase()));
 }
 
 function fieldAllowsListing(value) {
@@ -375,7 +373,7 @@ export function buildDiscordPayload(companyPosts, options = {}) {
   const sections = posts.map(formatCompanySection);
   const internshipLabel = listingCount === 1 ? 'internship' : 'internships';
   const lines = [
-    '# Daily 2027 Summer Internship Updates',
+    '# Daily 2027 Internship Updates',
     '',
     `**${listingCount} new U.S. CS/software ${internshipLabel} found today**  `,
     formatDateRange(now),
@@ -384,12 +382,7 @@ export function buildDiscordPayload(companyPosts, options = {}) {
     '━━━━━━━━━━━━━━━━━━━━',
     '',
     ...sections.flatMap((section) => [...section.split('\n'), '']),
-    '━━━━━━━━━━━━━━━━━━━━',
-    '',
-    `Bot repo: ${BOT_REPO_URL}`,
-    '',
-    'Simplify 2027 Internship Board:',
-    SIMPLIFY_2027_BOARD_URL
+    '━━━━━━━━━━━━━━━━━━━━'
   ];
 
   return splitLinesForDiscord(lines).map(buildPayload);
@@ -519,7 +512,7 @@ export async function run(config = getConfig(), dependencies = {}) {
   const runAt = currentRun.toISOString();
 
   console.log(`Fetched ${listings.length} listings`);
-  console.log('Found %d matching U.S. Summer 2027 hybrid/on-site CS/software, AI, or data internships', matches.length);
+  console.log('Found %d matching U.S. 2027 hybrid/on-site CS/software, AI, or data internships', matches.length);
   console.log(`Found ${newMatches.length} new listings in ${companyPosts.length} company posts`);
 
   if (config.dryRun) {
