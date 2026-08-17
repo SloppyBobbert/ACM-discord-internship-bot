@@ -90,14 +90,17 @@ test('accepts software internships and rejects unrelated internships', () => {
   assert.equal(isSoftwareInternship({ ...baseListing, title: 'Data Science Intern' }), true);
 });
 
-test('accepts only the hardcoded Summer 2027 term', () => {
-  assert.equal(isTargetTermListing(baseListing), true);
-  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Summer 2026'] }), false);
-  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Fall 2026'] }), false);
+test('accepts Winter, Spring, and Summer 2027 terms but rejects Fall and other years', () => {
+  assert.equal(isTargetTermListing({ ...baseListing, terms: [' Winter 2027 '] }), true);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['SPRING 2027'] }), true);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Summer 2027'] }), true);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Fall 2027'] }), false);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Winter 2026'] }), false);
+  assert.equal(isTargetTermListing({ ...baseListing, terms: ['Summer 2028'] }), false);
   assert.equal(isTargetTermListing({ ...baseListing, terms: [] }), false);
 });
 
-test('matching requires visible active U.S. software internship for Summer 2027 with apply URL and on-site or hybrid location', () => {
+test('matching requires visible active U.S. software internship for a 2027 target term with apply URL and on-site or hybrid location', () => {
   assert.equal(listingMatches(baseListing), true);
   assert.equal(listingMatches({ ...baseListing, active: false }), false);
   assert.equal(listingMatches({ ...baseListing, is_visible: false }), false);
@@ -115,7 +118,7 @@ test('creates stable listing keys by id, then url, then content hash', () => {
   assert.match(key, /^hash-[a-f0-9]{64}$/);
 });
 
-test('builds safe daily Discord updates with grouped roles, bot repo, and board link', () => {
+test('builds safe daily Discord updates with grouped roles and no footer links', () => {
   const [payload] = buildDiscordPayload(
     [
       {
@@ -146,7 +149,7 @@ test('builds safe daily Discord updates with grouped roles, bot repo, and board 
 
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
   assert.equal(payload.username, 'Internship Notifier');
-  assert.match(payload.content, /# Daily 2027 Summer Internship Updates/);
+  assert.match(payload.content, /# Daily 2027 Internship Updates/);
   assert.match(payload.content, /\*\*4 new U\.S\. CS\/software internships found today\*\*/);
   assert.match(payload.content, /June 21 - June 22/);
   assert.match(payload.content, /Daily at 3:00 PM PT/);
@@ -156,8 +159,7 @@ test('builds safe daily Discord updates with grouped roles, bot repo, and board 
   assert.match(payload.content, /### 2\. ✨ \*\*Datadog\*\*/);
   assert.match(payload.content, /Title: Software Engineering Intern/);
   assert.match(payload.content, /### 3\. \*\*Local Startup\*\*/);
-  assert.match(payload.content, /Bot repo: https:\/\/github\.com\/SloppyBobbert\/ACM-discord-internship-bot/);
-  assert.match(payload.content, /Simplify 2027 Internship Board:\s+https:\/\/simplify\.jobs\/l\/Summer2027-Internships/);
+  assert.doesNotMatch(payload.content, /Bot repo:|Simplify .*board:|github\.com\/(SloppyBobbert|SimplifyJobs)/);
 });
 
 test('splits long Discord updates into payloads below the content limit', () => {
@@ -180,8 +182,8 @@ test('splits long Discord updates into payloads below the content limit', () => 
 
   assert.equal(payloads.length > 1, true);
   assert.equal(payloads.every((payload) => payload.content.length <= 2000), true);
-  assert.match(payloads[0].content, /# Daily 2027 Summer Internship Updates/);
-  assert.match(payloads.at(-1).content, /Simplify 2027 Internship Board/);
+  assert.match(payloads[0].content, /# Daily 2027 Internship Updates/);
+  assert.equal(payloads.every((payload) => !/Bot repo:|Simplify .*board:|github\.com\/(SloppyBobbert|SimplifyJobs)/.test(payload.content)), true);
   assert.equal(payloads.every((payload) => payload.allowed_mentions.parse.length === 0), true);
 });
 
@@ -464,6 +466,7 @@ test('dry run does not post or mutate seen state', async () => {
     const initialState = { seen: [], lastRunAt: null };
     await writeFile(statePath, `${JSON.stringify(initialState, null, 2)}\n`);
     const posted = [];
+    let requestedListingsUrl;
 
     await run(
       {
@@ -472,13 +475,17 @@ test('dry run does not post or mutate seen state', async () => {
         statePath
       },
       {
-        fetchListings: async () => [matchingListing('dry-1')],
+        fetchListings: async (url) => {
+          requestedListingsUrl = url;
+          return [matchingListing('dry-1')];
+        },
         postToDiscord: async (companyPost) => posted.push(companyPost),
         now: () => new Date('2026-06-17T00:00:00.000Z')
       }
     );
 
     const state = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.equal(requestedListingsUrl, 'https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json');
     assert.deepEqual(posted, []);
     assert.deepEqual(state, initialState);
   });

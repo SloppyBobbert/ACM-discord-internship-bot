@@ -1,20 +1,18 @@
 # LawJob Listings
 
-Lowk [vibecoded](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ5jRY7cs5l49H2ciKtpcdGy30kxu4qzY29nw&s) Discord Node.js bot that scrapes SimplifyJobs internship listings and compiles a daily server notification for Summer 2027 U.S. CS internships. Made for the five active people in the Chico ACM Discord.
+Lowk [vibecoded](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ5jRY7cs5l49H2ciKtpcdGy30kxu4qzY29nw&s) Discord Node.js bot that scrapes SimplifyJobs internship listings and compiles daily 2027 Internship Updates for U.S. CS internships. Made for the five active people in the Chico ACM Discord.
 
-Source repo: [SimplifyJobs/Summer2026-Internships](https://github.com/SimplifyJobs/Summer2026-Internships)
+Source repo: [SimplifyJobs/Summer2027-Internships](https://github.com/SimplifyJobs/Summer2027-Internships)
 
-Note: The source is still the Summer 2026 listings JSON until a Summer 2027 repo/feed exists. The bot only keeps listings tagged `Summer 2027`.
+The human-facing boards are [README-Off-Season.md](https://github.com/SimplifyJobs/Summer2027-Internships/blob/dev/README-Off-Season.md) and [README.md](https://github.com/SimplifyJobs/Summer2027-Internships/blob/dev/README.md). The machine source is [listings.json](https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json).
 
 ## Hardcoded filters
 
 Hardcoded rules in `src/index.js`:
 
 - Source JSON: `DEFAULT_LISTINGS_URL`
-- Bot repo link: `BOT_REPO_URL`
-- Simplify board link: `SIMPLIFY_2027_BOARD_URL`
 - State file: `DEFAULT_STATE_PATH` (`data/seen.json`)
-- Target term: `SUMMER_2027_TERM`
+- Target terms: `TARGET_2027_TERMS` (`Winter 2027`, `Spring 2027`, and `Summer 2027`)
 - Discord schedule label: `DAILY_POST_TIME_LABEL`
 - U.S. location rule: `US_STATE_LOCATION` plus standard `country` values such as `US`, `USA`, `United States`, or `America`
 - Remote filter: `isHybridOrOnsiteListing()` rejects locations containing `remote`
@@ -22,13 +20,13 @@ Hardcoded rules in `src/index.js`:
 - Priority companies: `BEST_COMPANIES` and `GOOD_COMPANIES`
 - Unlisted company limits: `MAX_UNLISTED_WHEN_PRIORITY_IS_HIGH` and `MAX_UNLISTED_WHEN_PRIORITY_IS_LOW`
 
-Note: Everything is hardcoded, so edit `src/index.js` if you want to change the company list, keyword list, target term, or post cap.
+Note: Everything is hardcoded, so edit `src/index.js` if you want to change the company list, keyword list, target terms, or post cap.
 
 ## Posting behavior
 
 - First run is the exception to the normal save rule: it seeds `data/seen.json` without posting, so the channel does not get spammed with old listings.
 - Later runs post only listings that are not already in `data/seen.json`.
-- Each run sends one daily Discord update titled `Daily 2027 Summer Internship Updates`.
+- Each run sends one daily Discord update titled `Daily 2027 Internship Updates`.
 - The message includes the previous-day date range, the `Daily at 3:00 PM PT` label, numbered company sections, and apply links.
 - Best companies use 🔥, good companies use ✨, and unlisted "mid" companies have no emoji.
 - Multiple roles at the same company are grouped under that company's numbered section.
@@ -39,7 +37,7 @@ Note: Everything is hardcoded, so edit `src/index.js` if you want to change the 
 
 ## Sample
 
-## Daily 2027 Summer Internship Updates
+## Daily 2027 Internship Updates
 
 **7 new U.S. CS/software internships found today**  
 June 21 - June 22  
@@ -68,11 +66,6 @@ Location: Gary, IN
 Apply: https://example.com/lovense
 
 ━━━━━━━━━━━━━━━━━━━━
-
-Source repo: https://github.com/SimplifyJobs/Summer2026-Internships
-
-Simplify 2027 Internship Board:  
-https://simplify.jobs/l/Summer2027-Internships
 
 ## Contributing
 
@@ -119,7 +112,7 @@ flowchart TD
   A[GitHub Actions daily schedule] --> B[Run tests]
   B --> C[Run src/index.js]
   C --> D[Fetch SimplifyJobs JSON]
-  D --> E[Filter hardcoded Summer 2027 U.S. hybrid/on-site CS/software, AI, and data roles]
+  D --> E[Filter hardcoded 2027 U.S. hybrid/on-site CS/software, AI, and data roles]
   E --> F[Remove listings already in data/seen.json]
   F --> G[Rank by BEST_COMPANIES and GOOD_COMPANIES]
   G --> H[Group roles by company]
@@ -134,7 +127,7 @@ flowchart TD
 | --- | --- | --- |
 | `DISCORD_WEBHOOK_URL` | none | Required unless `DRY_RUN=true` |
 | `DRY_RUN` | `false` | Logs matches without posting or updating state |
-| `LISTINGS_URL` | SimplifyJobs Summer 2026 JSON | Optional local override for testing a different feed |
+| `LISTINGS_URL` | SimplifyJobs 2027 listings JSON | Optional local override for testing a different feed |
 
 ## GitHub Actions
 
